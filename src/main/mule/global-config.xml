@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns:email="http://www.mulesoft.org/schema/mule/email"
+    xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties"
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:http="http://www.mulesoft.org/schema/mule/http"
+    xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+    xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd 
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+        http://www.mulesoft.org/schema/mule/sftp
+        http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/file
+        http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+
+    <!-- Loads all non-sensitive application properties from src/main/resources/config.yaml -->
+    <configuration-properties
+    doc:name="Load Application Configuration"
+        file="config.yaml" />
+
+    <!-- Application-wide SFTP connector configuration -->
+    <sftp:config
+    name="SFTP_Config"
+        doc:name="Source SFTP Config">
+
+        <sftp:connection
+            host="${sftp.host}"
+            username="${sftp.username}"
+            password="${secure::sftp.password}"
+            connectionTimeout="30"/>
+
+    </sftp:config>
+
+    <!-- Application-wide HTTP Listener configuration -->
+    <http:listener-config
+    name="HTTP_Listener_config"
+        doc:name="HTTP Listener Config">
+
+        <http:listener-connection
+            host="0.0.0.0"
+            port="8081" />
+
+    </http:listener-config>
+
+    <!-- Application-wide local File connector configuration -->
+    <file:config
+    name="Local_File_Config"
+        doc:name="Local File Config" />
+
+    <!-- Fallback handler for unhandled Mule messaging errors -->
+  <secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" file="secure-local.yaml" key="${secret.key}"> <secure-properties:encrypt algorithm="Blowfish" /> </secure-properties:config>
+	<email:smtp-config
+    name="Email_SMTP_Config"
+    doc:name="Email SMTP">
+
+    <email:smtp-connection
+        host="smtp.gmail.com"
+        port="587"
+        user="${email.username}"
+        password="${secure::email.password}"
+        timeoutUnit="SECONDS"
+        connectionTimeout="30"
+        readTimeout="60"
+        writeTimeout="60">
+
+        <email:properties>
+
+            <email:property
+                key="mail.smtp.starttls.enable"
+                value="true" />
+
+            <email:property
+                key="mail.smtp.starttls.required"
+                value="true" />
+
+            <email:property
+                key="mail.smtp.ssl.protocols"
+                value="TLSv1.2" />
+
+            <email:property
+                key="mail.debug"
+                value="true" />
+
+        </email:properties>
+
+    </email:smtp-connection>
+
+</email:smtp-config>
+
+	<error-handler name="Global_Error_Handler">
+
+        <on-error-propagate
+            doc:name="Handle Unhandled Application Error"
+            type="ANY"
+            logException="true"
+            enableNotifications="true">
+
+            <logger
+                doc:name="Log Unhandled Application Error"
+                level="ERROR"
+                message='#[output application/json
+---
+{
+    event: "UNHANDLED_APPLICATION_ERROR",
+
+    runId:
+        vars.runId default "UNKNOWN_RUN",
+
+    triggerType:
+        vars.triggerType default "UNKNOWN_TRIGGER",
+
+    sourceFilePath:
+        vars.sourceFilePath default "UNKNOWN_SOURCE",
+
+    sourceFileName:
+        vars.expectedSourceFileName default "UNKNOWN_FILE",
+
+    runStatus:
+        vars.runStatus default "FAILED",
+
+    correlationId:
+        correlationId,
+
+    errorType:
+        (error.errorType.namespace default "MULE")
+        ++ ":"
+        ++ (error.errorType.identifier default "UNKNOWN"),
+
+    errorDescription:
+        error.description default "Unhandled application error",
+
+    errorDetailedDescription:
+        error.detailedDescription
+            default error.description
+            default "No detailed error description is available",
+
+    failingComponent:
+        error.failingComponent default "UNKNOWN_COMPONENT",
+
+    occurredAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX"
+            }
+}]' />
+
+        </on-error-propagate>
+
+    </error-handler>
+
+    <!-- Makes Global_Error_Handler the default for flows without a local handler -->
+    <configuration
+        doc:name="Global Application Configuration"
+    defaultErrorHandler-ref="Global_Error_Handler" />
+
+</mule>

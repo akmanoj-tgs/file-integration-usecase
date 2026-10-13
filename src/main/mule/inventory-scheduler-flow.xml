@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<flow name="inventory-scheduler-flowFlow" doc:id="53372773-85f1-4876-a9a2-470e4ff69fe4" initialState="stopped" maxConcurrency="1">
+		<scheduler doc:name="Daily Inventory Scheduler" doc:id="8006dcc7-7745-429b-9bab-ef13436ffda0" >
+			<scheduling-strategy >
+				<cron expression="${scheduler.cron}" timeZone="${scheduler.timezone}" />
+			</scheduling-strategy>
+		</scheduler>
+		<ee:transform doc:name="Initialize Scheduler Run Context">
+
+    <ee:variables>
+
+        <ee:set-variable variableName="triggerType"><![CDATA[
+%dw 2.0
+output application/java
+---
+"SCHEDULER"
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="runId"><![CDATA[
+%dw 2.0
+output application/java
+---
+"INV-"
+++ (
+    (now() >> "Asia/Kolkata")
+        as String {
+            format: "yyyyMMdd-HHmmss-SSS"
+        }
+)
+++ "-"
+++ uuid()
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="businessDate"><![CDATA[
+%dw 2.0
+output application/java
+---
+(now() >> "Asia/Kolkata")
+    as String {
+        format: "dd-MM-yyyy"
+    }
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="sourceFilePath"><![CDATA[
+%dw 2.0
+output application/java
+
+var currentBusinessDate =
+    (now() >> "Asia/Kolkata")
+        as String {
+            format: "dd-MM-yyyy"
+        }
+
+---
+"inbound/inventory_"
+++ currentBusinessDate
+++ ".csv"
+        ]]></ee:set-variable>
+
+    </ee:variables>
+
+</ee:transform>
+		<logger level="INFO" doc:name="Log Scheduled Run Start" doc:id="2c024d42-2869-4e57-bede-c003015b8d27" message="#[output application/json&#10;---&#10;{&#10;    event: &quot;INVENTORY_RUN_TRIGGERED&quot;,&#10;    triggerType: vars.triggerType,&#10;    runId: vars.runId,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    businessDate: vars.businessDate,&#10;    triggeredAt:&#10;        (now() &gt;&gt; &quot;Asia/Kolkata&quot;)&#10;            as String {format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;}&#10;}]"/>
+		<flow-ref doc:name="Start Inventory Processing" doc:id="f97e663e-5e36-4d44-aad0-42af0f845994" name="inventory-processing-flowFlow"/>
+	</flow>
+</mule>

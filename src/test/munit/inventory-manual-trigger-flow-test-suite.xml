@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+    xmlns:os="http://www.mulesoft.org/schema/mule/os"
+    xmlns:email="http://www.mulesoft.org/schema/mule/email"
+    xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+    xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/sftp
+        http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/os
+        http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+        http://www.mulesoft.org/schema/mule/email
+        http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+        http://www.mulesoft.org/schema/mule/munit
+        http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools
+        http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="inventory-manual-trigger-flow-test-suite.xml" />
+
+    <configuration-properties file="config-test.yaml" />
+
+    <!-- Test 1: Explicit source path, source file is missing -->
+    <munit:test
+        name="inventory-manual-trigger-flow-missing-source-test"
+        description="Manual request with missing source returns MISSING_SOURCE_FILE without email">
+        <munit:behavior>
+            <munit-tools:mock-when processor="sftp:list" doc:name="Mock Empty Source Directory">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="email:send" doc:name="Mock Notification Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Manual Trigger Missing Source Event">
+                <munit:payload value="#[{}]" mediaType="application/java" />
+                <munit:attributes value="#[{ queryParams: { sourceFile: 'inbound/inventory_01-01-2025.csv' } }]" mediaType="application/java" />
+            </munit:set-event>
+            <flow-ref name="inventory-manual-trigger-flow" doc:name="Invoke Manual Trigger Flow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Missing Source Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('MISSING_SOURCE_FILE')]" />
+            <munit-tools:assert-that doc:name="Assert Manual Trigger" expression="#[vars.triggerType]" is="#[MunitTools::equalTo('MANUAL')]" />
+            <munit-tools:assert-that doc:name="Assert Query Source Path" expression="#[vars.sourceFilePath]" is="#[MunitTools::equalTo('inbound/inventory_01-01-2025.csv')]" />
+            <munit-tools:verify-call processor="email:send" times="0" doc:name="Verify No Manual Missing Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call processor="os:store" times="0" doc:name="Verify Lock Not Attempted For Missing Source">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 2: No sourceFile query parameter -->
+    <munit:test
+        name="inventory-manual-trigger-flow-default-source-path-test"
+        description="Missing sourceFile query parameter uses the configured default source path">
+        <munit:behavior>
+            <munit-tools:mock-when processor="sftp:list" doc:name="Mock Empty Default Source Directory">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="email:send" doc:name="Mock Default Path Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Manual Trigger Without Query Parameter">
+                <munit:payload value="#[{}]" mediaType="application/java" />
+                <munit:attributes value="#[{ queryParams: {} }]" mediaType="application/java" />
+            </munit:set-event>
+            <flow-ref name="inventory-manual-trigger-flow" doc:name="Invoke Manual Trigger Flow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Default Source Path" expression="#[vars.sourceFilePath]" is="#[MunitTools::equalTo('inbound/sample_input_reject.csv')]" />
+            <munit-tools:assert-that doc:name="Assert Manual Trigger" expression="#[vars.triggerType]" is="#[MunitTools::equalTo('MANUAL')]" />
+            <munit-tools:assert-that doc:name="Assert Missing Default Source" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('MISSING_SOURCE_FILE')]" />
+            <munit-tools:verify-call processor="email:send" times="0" doc:name="Verify No Default Path Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 3: Another inventory run is active -->
+    <munit:test
+        name="inventory-manual-trigger-flow-already-running-test"
+        description="Fresh active lock returns ALREADY_RUNNING">
+        <munit:behavior>
+            <munit-tools:mock-when processor="sftp:list" doc:name="Mock Available Source">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[{ attributes: { fileName: 'inventory_01-01-2025.csv' } }]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="os:store" doc:name="Mock Active Lock Conflict">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_ALREADY_EXISTS" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="os:retrieve" doc:name="Mock Fresh Existing Lock">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['existingActiveRunLock']" value="#[{ runId: 'PREV-RUN-001', triggerType: 'SCHEDULER', status: 'PROCESSING', startedAt: '2099-01-01T00:00:00.000+05:30' }]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="email:send" doc:name="Mock Already Running Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Already Running Request">
+                <munit:payload value="#[{}]" mediaType="application/java" />
+                <munit:attributes value="#[{ queryParams: { sourceFile: 'inbound/inventory_01-01-2025.csv' } }]" mediaType="application/java" />
+            </munit:set-event>
+            <flow-ref name="inventory-manual-trigger-flow" doc:name="Invoke Manual Trigger Flow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Already Running" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('ALREADY_RUNNING')]" />
+            <munit-tools:assert-that doc:name="Assert Lock Not Acquired" expression="#[vars.lockAcquired default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Fresh Lock Not Stale" expression="#[vars.staleLockDetected default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Existing Lock Owner" expression="#[vars.existingLockOwnerRunId default 'UNKNOWN_RUN']" is="#[MunitTools::equalTo('PREV-RUN-001')]" />
+            <munit-tools:verify-call processor="sftp:move" times="0" doc:name="Verify Source Not Claimed">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Claim Source File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call processor="email:send" times="0" doc:name="Verify No Already Running Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 4: Source file was already processed -->
+    <munit:test
+        name="inventory-manual-trigger-flow-duplicate-file-test"
+        description="Previously processed source returns DUPLICATE_FILE and releases the lock">
+        <munit:behavior>
+            <munit-tools:mock-when processor="sftp:list" doc:name="Mock Available Duplicate Source">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[{ attributes: { fileName: 'inventory_01-01-2025.csv' } }]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="os:store" doc:name="Mock Manual Lock Acquisition">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="os:contains" doc:name="Mock Duplicate History">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Check File Processing History']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['duplicateFile']" value="#[true]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="os:remove" doc:name="Mock Duplicate Lock Release">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Duplicate']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="email:send" doc:name="Mock Duplicate Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Duplicate Manual Request">
+                <munit:payload value="#[{}]" mediaType="application/java" />
+                <munit:attributes value="#[{ queryParams: { sourceFile: 'inbound/inventory_01-01-2025.csv' } }]" mediaType="application/java" />
+            </munit:set-event>
+            <flow-ref name="inventory-manual-trigger-flow" doc:name="Invoke Manual Trigger Flow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Duplicate Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('DUPLICATE_FILE')]" />
+            <munit-tools:assert-that doc:name="Assert Duplicate Flag" expression="#[vars.duplicateFile]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Duplicate Lock Cleared" expression="#[vars.lockAcquired default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:verify-call processor="os:remove" times="1" doc:name="Verify Duplicate Lock Released">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Duplicate']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call processor="sftp:move" times="0" doc:name="Verify Duplicate Source Not Claimed">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Claim Source File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call processor="email:send" times="0" doc:name="Verify No Duplicate Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 5: Manual run context initialization -->
+    <munit:test
+        name="inventory-manual-trigger-flow-run-context-initialization-test"
+        description="Manual run context initializes runId triggerType businessDate and sourceFilePath">
+        <munit:behavior>
+            <munit-tools:mock-when processor="sftp:list" doc:name="Mock Empty Context Source Directory">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when processor="email:send" doc:name="Mock Context Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Context Initialization Request">
+                <munit:payload value="#[{}]" mediaType="application/java" />
+                <munit:attributes value="#[{ queryParams: { sourceFile: 'inbound/inventory_01-01-2025.csv' } }]" mediaType="application/java" />
+            </munit:set-event>
+            <flow-ref name="inventory-manual-trigger-flow" doc:name="Invoke Manual Trigger Flow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Manual Trigger" expression="#[vars.triggerType]" is="#[MunitTools::equalTo('MANUAL')]" />
+            <munit-tools:assert-that doc:name="Assert Run Id Present" expression="#[vars.runId]" is="#[MunitTools::notNullValue()]" />
+            <munit-tools:assert-that doc:name="Assert Run Id Prefix" expression="#[vars.runId]" is="#[MunitTools::containsString('INV-')]" />
+            <munit-tools:assert-that doc:name="Assert Business Date Present" expression="#[vars.businessDate]" is="#[MunitTools::notNullValue()]" />
+            <munit-tools:assert-that doc:name="Assert Context Source Path" expression="#[vars.sourceFilePath]" is="#[MunitTools::equalTo('inbound/inventory_01-01-2025.csv')]" />
+            <munit-tools:assert-that doc:name="Assert Missing Source Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('MISSING_SOURCE_FILE')]" />
+            <munit-tools:verify-call processor="email:send" times="0" doc:name="Verify No Context Email">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+</mule>

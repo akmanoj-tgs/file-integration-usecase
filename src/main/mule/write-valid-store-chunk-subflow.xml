@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+	xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+	<sub-flow name="write-valid-store-chunk-subflowSub_Flow" doc:id="c4e04fe8-69db-4795-bf80-1f7ec07b85cc" >
+		<ee:transform doc:name="Initialize Valid Store File Context">
+
+    <ee:variables>
+
+        <ee:set-variable variableName="currentStoreId"><![CDATA[
+%dw 2.0
+output application/java
+---
+(payload.storeId default "") as String
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="recordsToWrite"><![CDATA[
+%dw 2.0
+output application/java
+---
+payload.records default []
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="localFileName"><![CDATA[
+%dw 2.0
+output application/java
+
+var storeId =
+    (payload.storeId default "UNKNOWN_STORE") as String
+
+var fileDate =
+    (vars.businessDate default "UNKNOWN_DATE") as String
+
+---
+"inventory_"
+++ storeId
+++ "_"
+++ fileDate
+++ ".csv.part"
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="localFilePath"><![CDATA[
+%dw 2.0
+output application/java
+
+var storeId =
+    (payload.storeId default "UNKNOWN_STORE") as String
+
+var fileDate =
+    (vars.businessDate default "UNKNOWN_DATE") as String
+
+var fileName =
+    "inventory_"
+    ++ storeId
+    ++ "_"
+    ++ fileDate
+    ++ ".csv.part"
+
+var stagingDirectory =
+    (
+        vars.validStagingDirectory
+            default "C:/mule_files/process/records/valid"
+    ) as String
+
+---
+stagingDirectory
+++ "/"
+++ fileName
+        ]]></ee:set-variable>
+
+    </ee:variables>
+
+</ee:transform>
+		<file:list doc:name="List Existing Valid Store Files" doc:id="cbe87965-c581-4b91-855a-9c439c0da6b5" directoryPath="#[vars.validStagingDirectory]" target="existingStoreFiles" config-ref="Local_File_Config"/>
+		<set-variable value='#[!isEmpty(&#10;        (vars.existingStoreFiles default [])&#10;            filter ((file) -&gt;&#10;                (file.attributes.fileName default "")&#10;                    == vars.localFileName&#10;            )&#10;    )]' doc:name="Check Valid Store File Exists" doc:id="09675d08-d569-407d-8e0a-00b2aa001a87" variableName="localFileExists"/>
+		<file:write doc:name="Append Valid Store Records" doc:id="3710677d-ac1f-4d9b-acd6-f6201f717fe2" path="#[vars.localFilePath]" mode="APPEND" lock="true" config-ref="Local_File_Config">
+			<file:content ><![CDATA[#[%dw 2.0
+output application/octet-stream
+
+var rows =
+    vars.recordsToWrite map ((record) -> {
+        SKU: record.SKU,
+        StoreId: record.StoreId,
+        Type: record.Type,
+        Quantity: record.Quantity,
+        Timestamp: record.Timestamp
+    })
+
+---
+write(
+    rows,
+    "application/csv",
+    {
+        header: not (vars.localFileExists default false),
+        separator: ",",
+        quoteValues: true,
+        lineSeparator: "\n"
+    }
+)]]]></file:content>
+		</file:write>
+	</sub-flow>
+</mule>

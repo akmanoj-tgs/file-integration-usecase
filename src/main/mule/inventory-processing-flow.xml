@@ -1,0 +1,610 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking"
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:os="http://www.mulesoft.org/schema/mule/os"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+    xmlns:batch="http://www.mulesoft.org/schema/mule/batch"
+    xmlns:file="http://www.mulesoft.org/schema/mule/file"
+    xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+    xmlns:http="http://www.mulesoft.org/schema/mule/http" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd 
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd 
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/batch
+        http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+        http://www.mulesoft.org/schema/mule/file
+        http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+        http://www.mulesoft.org/schema/mule/sftp
+        http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	
+    <flow
+        name="inventory-processing-flowFlow"
+        doc:name="Inventory Processing Flow" doc:id="51debfcb-f22d-4e64-8db7-bd355d9d66cf">
+        
+
+        <ee:transform doc:name="Initialize Processing Directories" doc:id="10f5abc2-d35a-45f4-8234-b412f6fcf3aa" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="targetDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("directories.outbound")]]></ee:set-variable>
+				<ee:set-variable variableName="rejectedTargetDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("directories.rejected")]]></ee:set-variable>
+				<ee:set-variable variableName="validStagingDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("local.validStaging")]]></ee:set-variable>
+				<ee:set-variable variableName="rejectedStagingDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("local.rejectedStaging")]]></ee:set-variable>
+				<ee:set-variable variableName="processingDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("directories.processing")]]></ee:set-variable>
+				<ee:set-variable variableName="archiveDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("directories.archive")]]></ee:set-variable>
+				<ee:set-variable variableName="errorDirectory" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("directories.error")]]></ee:set-variable>
+				<ee:set-variable variableName="staleLockThresholdHours" ><![CDATA[%dw 2.0
+output application/java
+---
+Mule::p("lock.staleThresholdHours") as Number]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger
+            doc:name="Log Processing Start"
+            level="INFO"
+            message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_PROCESSING_STARTED",&#10;    triggerType: vars.triggerType,&#10;    runId: vars.runId,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    businessDate: vars.businessDate,&#10;    targetDirectory: vars.targetDirectory,&#10;    rejectedTargetDirectory: vars.rejectedTargetDirectory,&#10;    validStagingDirectory: vars.validStagingDirectory,&#10;    rejectedStagingDirectory: vars.rejectedStagingDirectory&#10;}]' />
+		<flow-ref doc:name="Check Source File Availability" doc:id="e33cf42e-9abf-40a0-af03-f81aa72b78b7" name="check-source-file-availability-subflow"/>
+		<choice doc:name="Source File Available or Not?" doc:id="d91df685-1c68-49fa-911d-d2a646dc776d" >
+			<when expression='#[vars.sourceFileAvailable default false]'>
+				<set-variable value='#["PROCESSING"]' doc:name="Set Processing Status" doc:id="0237a21f-2dc2-43c4-a312-b33e98278191" variableName="runStatus"/>
+				<logger
+		         doc:name="Log Source File Available"
+		         level="INFO"
+		         message="#[output application/json&#10;---&#10;{&#10;    event: &quot;INVENTORY_SOURCE_FILE_AVAILABLE&quot;,&#10;    triggerType: vars.triggerType,&#10;    runId: vars.runId,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    sourceFileName: vars.expectedSourceFileName,&#10;    runStatus: vars.runStatus,&#10;    checkedAt:&#10;        (now() &gt;&gt; &quot;Asia/Kolkata&quot;)&#10;            as String {&#10;                format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;&#10;            }&#10;}]" />
+		         
+		         
+				<flow-ref doc:name="Acquire Inventory Run Lock" doc:id="2f5f0acc-8674-4f6e-824f-b3112ccc141c" name="acquire-inventory-run-lock-subflow"/>
+				<choice doc:name="Check Active Run Lock" doc:id="4e27cb07-1716-457a-a905-84421a62c5e2" >
+					<when expression="#[vars.lockAcquired default false]">
+						<logger level="INFO" doc:name="Log Active Run Lock Acquired" doc:id="bfb853cc-1af1-4070-a712-dd2ae5cfe91c" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_RUN_LOCK_ACQUIRED",&#10;    runId: vars.runId,&#10;    triggerType: vars.triggerType,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    lockKey: Mule::p("lock.activeKey"),&#10;    runStatus: vars.runStatus&#10;}]'/>
+						<flow-ref doc:name="Check File Idempotency" doc:id="a641bba7-906d-47ad-a635-d5ca967c8b62" name="check-file-idempotency-subflow"/>
+						<choice doc:name="Continue Eligible File Processing" doc:id="8dcc8eab-2459-4664-b990-1efa89a1d68e">
+							<when expression="#[not (vars.duplicateFile default false)]">
+								<flow-ref doc:name="Claim and Read Source File" doc:id="ba5d756c-c9cd-46ca-a0a3-366ad502f2ee" name="claim-source-file-subflow"/>
+								<batch:job jobName="inventory-processing-batch_Job" blockSize="2000" maxConcurrency="1" maxFailedRecords="-1">
+
+            <batch:process-records>
+
+                <batch:step name="validate_record_Step">
+					<ee:transform doc:name="Validate Inventory Record">
+                        <ee:message>
+                            <ee:set-payload><![CDATA[%dw 2.0
+import toLocalDateTimeOrNull from dw::util::Coercions
+output application/java
+
+var currentRecord =
+    if (payload is Array)
+        payload[0] default {}
+    else
+        payload
+
+var row = {
+    SKU:
+        trim((currentRecord.SKU default "") as String),
+
+    StoreId:
+        trim((currentRecord.StoreId default "") as String),
+
+    Type:
+        trim((currentRecord.Type default "") as String),
+
+    Quantity:
+        trim((currentRecord.Quantity default "") as String),
+
+    Timestamp:
+        trim((currentRecord.Timestamp default "") as String)
+}
+
+var quantityIsWholeNumber =
+    !isEmpty(row.Quantity)
+    and (row.Quantity matches /^\d+$/)
+
+var timestampValue =
+    if (isEmpty(row.Timestamp))
+        null
+    else
+        toLocalDateTimeOrNull(
+            row.Timestamp,
+            [
+                {
+                    format: "M/d/uuuu H:mm"
+                },
+                {
+                    format: "MM/dd/uuuu HH:mm"
+                }
+            ]
+        )
+
+var timestampIsValid =
+    !isEmpty(row.Timestamp)
+    and timestampValue != null
+
+var validationReasons =
+    []
+    ++ (
+        if (isEmpty(row.SKU))
+            ["SKU is required"]
+        else
+            []
+    )
+    ++ (
+        if (isEmpty(row.StoreId))
+            ["StoreId is required"]
+        else
+            []
+    )
+    ++ (
+        if (isEmpty(row.Type))
+            ["Type is required"]
+        else
+            []
+    )
+    ++ (
+        if (
+            !isEmpty(row.Type)
+            and !(["Standard", "Backorder"] contains row.Type)
+        )
+            ["Type must be Standard or Backorder"]
+        else
+            []
+    )
+    ++ (
+        if (isEmpty(row.Quantity))
+            ["Quantity is required"]
+        else if (!quantityIsWholeNumber)
+            ["Quantity must be a non-negative whole number"]
+        else
+            []
+    )
+    ++ (
+        if (isEmpty(row.Timestamp))
+            ["Timestamp is required"]
+        else if (!timestampIsValid)
+            ["Timestamp must be a valid date in M/d/yyyy H:mm format"]
+        else
+            []
+    )
+
+---
+{
+    data: {
+        SKU: row.SKU,
+        StoreId: row.StoreId,
+        Type: row.Type,
+        Quantity:
+            if (quantityIsWholeNumber)
+                row.Quantity as Number
+            else
+                row.Quantity,
+        Timestamp: row.Timestamp
+    },
+    validation: {
+        isValid: isEmpty(validationReasons),
+        reasons: validationReasons
+    }
+}]]></ee:set-payload>
+                        </ee:message>
+                    </ee:transform>
+
+                </batch:step>
+
+                <batch:step name="write-valid-records-step" acceptExpression="#[payload.validation.isValid default false]">
+
+                    <batch:aggregator doc:name="Aggregate Valid Records" size="6000">
+										<ee:transform doc:name="Group Current Chunk by StoreId">
+                            <ee:message>
+                                <ee:set-payload><![CDATA[
+%dw 2.0
+output application/java
+
+var validRows =
+    payload map ((record) -> record.data)
+
+---
+(validRows groupBy ((record) -> record.StoreId))
+    pluck ((records, storeId) -> {
+        storeId: storeId,
+        records: records
+    })
+                                ]]></ee:set-payload>
+                            </ee:message>
+                        </ee:transform>
+										<foreach doc:name="For Each Store Group" collection="#[payload]">
+
+                            <flow-ref doc:name="Write Valid Store Chunk" name="write-valid-store-chunk-subflowSub_Flow" />
+
+                        </foreach>
+
+                    </batch:aggregator>
+
+                </batch:step>
+
+                <batch:step name="write-invalid-records-step" acceptExpression="#[not (payload.validation.isValid default false)]">
+
+                    <batch:aggregator doc:name="Aggregate Rejected Records" size="6000">
+
+                        <ee:transform doc:name="Initialize Rejection File Context">
+
+    <ee:variables>
+
+        <ee:set-variable variableName="rejectionFileName"><![CDATA[
+%dw 2.0
+output application/java
+
+var fileDate =
+    (vars.businessDate default "UNKNOWN_DATE") as String
+
+---
+"inventory_rejected_"
+++ fileDate
+++ ".csv.part"
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="rejectionFilePath"><![CDATA[
+%dw 2.0
+output application/java
+
+var fileDate =
+    (vars.businessDate default "UNKNOWN_DATE") as String
+
+var fileName =
+    "inventory_rejected_"
+    ++ fileDate
+    ++ ".csv.part"
+
+var stagingDirectory =
+    (
+        vars.rejectedStagingDirectory
+            default "C:/mule_files/process/records/rejected"
+    ) as String
+
+---
+stagingDirectory
+++ "/"
+++ fileName
+        ]]></ee:set-variable>
+
+    </ee:variables>
+
+</ee:transform>
+										<file:list doc:name="List Rejection Directory" config-ref="Local_File_Config" directoryPath="#[vars.rejectedStagingDirectory&#10;                                    default 'C:/mule_files/process/records/rejected']" target="existingRejectedFiles" />
+										<set-variable doc:name="Check Rejection File Exists" variableName="rejectionFileExists" value='#[!isEmpty(&#10;                                    (vars.existingRejectedFiles default [])&#10;                                        filter ((fileEntry) -&gt;&#10;                                            ((fileEntry.attributes.fileName default "") as String)&#10;                                            ==&#10;                                            ((vars.rejectionFileName default "") as String)&#10;                                        )&#10;                                )]' />
+										<file:write doc:name="Append Rejected Records" config-ref="Local_File_Config" path="#[vars.rejectionFilePath]" mode="APPEND" lock="true">
+
+                            <file:content><![CDATA[#[%dw 2.0
+output application/octet-stream
+
+var rejectedRows =
+    payload map ((record) -> {
+        SKU: record.data.SKU default "",
+        StoreId: record.data.StoreId default "",
+        Type: record.data.Type default "",
+        Quantity: record.data.Quantity default "",
+        Timestamp: record.data.Timestamp default "",
+        ValidationReason:
+            (record.validation.reasons default [])
+                joinBy "; "
+    })
+
+---
+write(
+    rejectedRows,
+    "application/csv",
+    {
+        header: not (vars.rejectionFileExists default false),
+        separator: ",",
+        quoteValues: true,
+        lineSeparator: "\n"
+    }
+)]]]></file:content>
+
+                        </file:write>
+
+                    </batch:aggregator>
+
+                </batch:step>
+
+            </batch:process-records>
+
+            <batch:on-complete>
+
+                <set-variable doc:name="Preserve Batch Result" variableName="batchResult" value="#[payload]" />
+										<logger doc:name="Log Batch Completion" level="INFO" message='#[output application/json
+---
+{
+    event: "INVENTORY_BATCH_COMPLETED",
+
+    totalRecordsLoaded:
+        vars.batchResult.loadedRecords default 0,
+
+    technicallyProcessedRecords:
+        vars.batchResult.successfulRecords default 0,
+
+    technicallyFailedRecords:
+        vars.batchResult.failedRecords default 0
+}]' />
+
+                <choice doc:name="Check Batch Technical Failures">
+
+                    <when expression="#[(vars.batchResult.failedRecords default 0) > 0]">
+
+    <set-variable
+        doc:name="Set Failed Status"
+        variableName="runStatus"
+        value='#["FAILED"]' />
+
+    <flow-ref
+        doc:name="Move Failed Source File to Error"
+        name="move-source-to-error-subflow" />
+
+    <try doc:name="Release Lock After Batch Failure">
+
+        <os:remove
+            doc:name="Release Active Run Lock After Failure"
+            key="${lock.activeKey}" />
+
+        <logger
+            doc:name="Log Active Run Lock Released"
+            level="INFO"
+            message='#[output application/json
+---
+{
+    event: "INVENTORY_RUN_LOCK_RELEASED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    runStatus: vars.runStatus default "FAILED",
+    lockKey: Mule::p("lock.activeKey")
+}]' />
+
+        <error-handler>
+
+            <on-error-continue
+                doc:name="Ignore Missing Lock After Batch Failure"
+                type="OS:KEY_NOT_FOUND"
+                enableNotifications="false"
+                logException="false" />
+
+        </error-handler>
+
+    </try>
+
+    <set-variable
+        doc:name="Set Batch Failure Notification Error Type"
+        variableName="notificationErrorType"
+        value='#["APP:BATCH_TECHNICAL_FAILURE"]' />
+
+    <set-variable
+        doc:name="Set Batch Failure Notification Description"
+        variableName="notificationErrorDescription"
+        value='#["One or more records failed because of technical processing errors. "&#10;            ++ "Technically failed records: "&#10;            ++ (&#10;                (vars.batchResult.failedRecords default 0)&#10;                    as String&#10;            )]' />
+
+    <ee:transform doc:name="Prepare Batch Failure Notification">
+
+        <ee:variables>
+
+            <ee:set-variable
+                variableName="notificationBody"
+                resource="email-templates/failure-notification.dwl" />
+
+        </ee:variables>
+
+    </ee:transform>
+
+    <set-variable
+        doc:name="Set Batch Failure Notification Type"
+        variableName="notificationType"
+        value='#["BATCH_TECHNICAL_FAILURE"]' />
+
+    <set-variable
+        doc:name="Set Batch Failure Notification Subject"
+        variableName="notificationSubject"
+        value='#["[Inventory Integration] BATCH_TECHNICAL_FAILURE - "&#10;            ++ (&#10;                vars.expectedSourceFileName&#10;                    default "UNKNOWN_FILE"&#10;            )]' />
+
+    <flow-ref
+        doc:name="Send Batch Failure Notification"
+        name="send-inventory-notification-flow" />
+
+    <raise-error
+        doc:name="Raise Batch Technical Failure"
+        type="APP:BATCH_TECHNICAL_FAILURE"
+        description="One or more records failed because of technical processing errors" />
+
+</when>
+											<otherwise>
+												<flow-ref doc:name="Finalize Successful Inventory Run" doc:id="b5ba4fa5-431b-45c1-bb1e-50b9ed1b3e44" name="finalize-successful-inventory-run-subflow"/>
+
+                    
+</otherwise>
+
+                
+</choice>
+            
+</batch:on-complete>
+
+        </batch:job>
+							</when>
+							<otherwise>
+								<logger level="DEBUG" doc:name="Log Duplicate Processing Stopped" doc:id="fd2dda15-3c63-4f3e-a173-289e6a087e92" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_DUPLICATE_PROCESSING_STOPPED",&#10;    runId: vars.runId default "UNKNOWN_RUN",&#10;    sourceFileName:&#10;        vars.expectedSourceFileName default "UNKNOWN_FILE",&#10;    duplicateFile: vars.duplicateFile default false,&#10;    runStatus: vars.runStatus default "DUPLICATE_FILE"&#10;}]'/>
+							</otherwise>
+						</choice>
+						
+					</when>
+					<otherwise >
+						<set-variable value='#["ALREADY_RUNNING"]' doc:name="Set Already Running Status" doc:id="4fc2362d-dd42-48e7-a4e2-4ce32aa2cba6" variableName="runStatus"/>
+						<logger level="WARN" doc:name="Log Run Skipped" doc:id="658a74dc-e179-45cf-bd9f-e3865cf697f1" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_RUN_SKIPPED",&#10;    runId: vars.runId,&#10;    triggerType: vars.triggerType,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    runStatus: vars.runStatus,&#10;    reason:&#10;        "Another inventory execution currently holds the active-run lock."&#10;}]'/>
+					</otherwise>
+				
+</choice>				
+				
+			
+			</when>
+			<otherwise >
+				<set-variable value='#["MISSING_SOURCE_FILE"]' doc:name="Set Missing File Status" doc:id="e8b8dfd7-63fd-4f58-8353-93290ad48544" variableName="runStatus"/>
+				<logger level="WARN" doc:name="Log Missing Source File" doc:id="fe685dec-c27d-41a1-93ff-07b3c9b258e1" message="#[output application/json&#10;---&#10;{&#10;    event: &quot;INVENTORY_SOURCE_FILE_MISSING&quot;,&#10;    triggerType: vars.triggerType,&#10;    runId: vars.runId,&#10;    expectedSourceFilePath: vars.sourceFilePath,&#10;    expectedSourceFileName: vars.expectedSourceFileName,&#10;    runStatus: vars.runStatus,&#10;    checkedAt:&#10;        (now() &gt;&gt; &quot;Asia/Kolkata&quot;)&#10;            as String {&#10;                format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;&#10;            },&#10;    message:&#10;        &quot;The expected inventory source file was not found. Batch processing was not started.&quot;&#10;}]"/>
+				<choice doc:name="Notify Scheduled Missing Source" doc:id="2e097ad0-c598-4440-af5c-8ce2a2631e1e" >
+					<when expression='#[upper(vars.triggerType default "") == "SCHEDULER"]'>
+						<ee:transform doc:name="Prepare Missing Source Notification">
+
+    <ee:variables>
+
+        <ee:set-variable
+            variableName="notificationBody"
+            resource="email-templates/missing-source-notification.dwl" />
+
+    </ee:variables>
+
+</ee:transform>
+<set-variable
+    doc:name="Set Missing Source Notification Type"
+    variableName="notificationType"
+    value='#["MISSING_SOURCE_FILE"]' />
+<set-variable
+    doc:name="Set Missing Source Notification Subject"
+    variableName="notificationSubject"
+    value='#[
+        "[Inventory Integration] MISSING_SOURCE_FILE - "
+        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE")
+    ]' />
+<flow-ref
+    doc:name="Send Missing Source Notification"
+    name="send-inventory-notification-flow" />
+					</when>
+					<otherwise >
+						<logger level="DEBUG" doc:name="Log Manual Missing Source Notification Skipped" doc:id="f92bff8f-35ec-4ffc-af49-22793b2b63ae" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_MISSING_SOURCE_EMAIL_SKIPPED",&#10;    runId: vars.runId default "UNKNOWN_RUN",&#10;    triggerType:&#10;        vars.triggerType default "UNKNOWN_TRIGGER",&#10;    sourceFilePath:&#10;        vars.sourceFilePath default "UNKNOWN_SOURCE",&#10;    reason:&#10;        "Missing-source email is sent only for Scheduler executions."&#10;}]'/>
+					</otherwise>
+				</choice>
+			</otherwise>
+		</choice>
+		<error-handler>
+
+    <on-error-propagate
+        doc:name="Handle Inventory Processing Failure"
+        type="ANY"
+        logException="false">
+		<set-variable
+    doc:name="Preserve Notification Error Type"
+    variableName="notificationErrorType"
+    value='#[(
+        error.errorType.namespace default "MULE"
+    )
+    ++ ":"
+    ++ (
+        error.errorType.identifier default "UNKNOWN"
+    )]' />
+
+<set-variable
+    doc:name="Preserve Notification Error Description"
+    variableName="notificationErrorDescription"
+    value='#[error.description
+        default "Inventory processing failed"]' />
+        <set-variable value='#["FAILED"]' doc:name="Set Processing Failed Status" doc:id="2f3851c0-002f-465b-adaf-4f17da9f0048" variableName="runStatus"/>
+				<flow-ref doc:name="Move Claimed Source File to Error" doc:id="7304d290-b6e7-4de2-8cc8-3b2cac5b855a" name="move-source-to-error-subflow" />
+				<choice doc:name="Check Lock Cleanup Required">
+
+            <when expression="#[vars.lockAcquired default false]">
+
+                <try doc:name="Release Lock After Processing Failure">
+
+                    <os:remove
+                        doc:name="Release Active Run Lock After Processing Failure"
+                        key='${lock.activeKey}' />
+
+                    <error-handler>
+
+                        <on-error-continue
+                            doc:name="Ignore Missing Lock During Cleanup"
+                            type="OS:KEY_NOT_FOUND"
+                            logException="false" />
+
+                    </error-handler>
+
+                </try>
+
+            </when>
+					<otherwise>
+
+                <logger
+                    doc:name="Log No Lock Cleanup Required"
+                    level="DEBUG"
+                    message="No active-run lock was acquired by this execution." />
+
+            </otherwise>
+
+        </choice>
+        <ee:transform doc:name="Prepare Processing Failure Notification">
+
+    <ee:variables>
+
+        <ee:set-variable
+            variableName="notificationBody"
+            resource="email-templates/failure-notification.dwl" />
+
+    </ee:variables>
+
+</ee:transform>
+
+        <logger
+            doc:name="Log Inventory Processing Failure"
+            level="ERROR"
+            message='#[output application/json
+---
+{
+    event: "INVENTORY_PROCESSING_FAILED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    triggerType: vars.triggerType default "UNKNOWN_TRIGGER",
+    sourceFilePath: vars.sourceFilePath default "UNKNOWN_SOURCE",
+    errorType:
+        (error.errorType.identifier default "UNKNOWN") as String,
+    errorDescription:
+        error.description default "Inventory processing failed"
+}]' />
+				<set-variable value='#["PROCESSING_FAILURE"]' doc:name="Set Failure Notification Type" doc:id="966648ba-573a-47ac-9df7-d2846664aaf0" variableName="notificationType"/>
+				<set-variable value='#["[Inventory Integration] "&#10;        ++ (vars.runStatus default "FAILED")&#10;        ++ " - "&#10;        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE")]' doc:name="Set Failure Notification Subject" doc:id="38eec21f-648f-481b-b276-c79109ee0ead" variableName="notificationSubject"/>
+				<flow-ref doc:name="Send Processing Failure Notification" doc:id="424cbc87-16c1-4160-8543-069b97c57f9a" name="send-inventory-notification-flow"/>
+
+    
+</on-error-propagate>
+
+</error-handler>
+    </flow>
+
+</mule>

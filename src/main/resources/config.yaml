@@ -1,0 +1,31 @@
+sftp:
+  host: "ap-southeast-1.sftpcloud.io"
+  username: "9fdbdf91266c4a3c8149d24b896fae75"
+
+directories:
+  inbound: "inbound"
+  processing: "processing"
+  archive: "archive"
+  error: "error"
+  outbound: "outbound"
+  rejected: "rejected"
+
+local:
+  validStaging: "C:/mule_files/process/records/valid"
+  rejectedStaging: "C:/mule_files/process/records/rejected"
+
+lock:
+  activeKey: "inventory::active-run"
+  staleThresholdHours: "2"
+
+scheduler:
+  cron: "0 0 4 * * ?"
+  timezone: "Asia/Kolkata"
+  
+email:
+  enabled: "true"
+  host: "smtp.gmail.com"
+  port: "587"
+  username: "akhil.manoj1203@gmail.com"
+  from: "akhil.manoj1203@gmail.com"
+  recipients: "akhil.manoj1203@gmail.com"

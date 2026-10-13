@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:email="http://www.mulesoft.org/schema/mule/email"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd 
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/email
+        http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd">
+
+    <flow name="send-inventory-notification-flow" doc:id="0148a994-3d1e-4ecc-a09e-306ad2ddbb3e">
+
+        <choice doc:name="Check Email Notification Enabled">
+
+            <when
+                expression='#[lower(Mule::p("email.enabled") default "false") == "true"]'>
+
+                <email:send
+    doc:name="Send Inventory Notification"
+    config-ref="Email_SMTP_Config"
+    fromAddress="${email.from}"
+    subject='#[vars.notificationSubject default "[Inventory Integration] Notification"]'>
+
+    <email:to-addresses>
+
+        <email:to-address
+            value="${email.recipients}" />
+
+    </email:to-addresses>
+
+    <email:bcc-addresses />
+					<email:body
+    contentType="text/html"
+    encoding="UTF-8">
+
+    <email:content><![CDATA[#[vars.notificationBody]]]></email:content>
+
+</email:body>
+
+</email:send>
+
+                <logger
+                    doc:name="Log Email Notification Sent"
+                    level="INFO"
+                    message='#[output application/json
+---
+{
+    event: "INVENTORY_EMAIL_NOTIFICATION_SENT",
+    runId: vars.runId default "UNKNOWN_RUN",
+    notificationType:
+        vars.notificationType default "GENERAL",
+    recipient:
+        vars.notificationRecipient
+            default Mule::p("email.recipients"),
+    subject:
+        vars.notificationSubject
+            default "[Inventory Integration] Notification",
+    sentAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX"
+            }
+}]' />
+
+            </when>
+
+            <otherwise>
+
+                <logger
+                    doc:name="Log Email Notification Disabled"
+                    level="DEBUG"
+                    message='#[output application/json
+---
+{
+    event: "INVENTORY_EMAIL_NOTIFICATION_SKIPPED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    notificationType:
+        vars.notificationType default "GENERAL",
+    subject:
+        vars.notificationSubject
+            default "[Inventory Integration] Notification",
+    reason: "Email notifications are disabled."
+}]' />
+
+            </otherwise>
+
+        </choice>
+
+        <error-handler>
+
+            <on-error-continue
+                doc:name="Handle Email Notification Failure"
+                type="ANY"
+                enableNotifications="false"
+                logException="false">
+
+                <logger
+                    doc:name="Log Email Notification Failure"
+                    level="ERROR"
+                    message='#[output application/json
+---
+{
+    event: "INVENTORY_EMAIL_NOTIFICATION_FAILED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    notificationType:
+        vars.notificationType default "GENERAL",
+    recipient:
+        vars.notificationRecipient
+            default Mule::p("email.recipients"),
+    subject:
+        vars.notificationSubject
+            default "[Inventory Integration] Notification",
+    emailErrorType:
+        (error.errorType.namespace default "EMAIL")
+        ++ ":"
+        ++ (error.errorType.identifier default "UNKNOWN"),
+    emailErrorDescription:
+        error.description default "Email notification failed",
+    inventoryProcessingUnaffected: true,
+    failedAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX"
+            }
+}]' />
+
+            </on-error-continue>
+
+        </error-handler>
+
+    </flow>
+
+</mule>

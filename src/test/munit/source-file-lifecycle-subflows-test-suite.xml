@@ -1,0 +1,655 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+    xmlns:os="http://www.mulesoft.org/schema/mule/os"
+    xmlns:file="http://www.mulesoft.org/schema/mule/file"
+    xmlns:email="http://www.mulesoft.org/schema/mule/email"
+    xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+    xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/sftp
+        http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/os
+        http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+        http://www.mulesoft.org/schema/mule/file
+        http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+        http://www.mulesoft.org/schema/mule/email
+        http://www.mulesoft.org/schema/mule/email/current/mule-email.xsd
+        http://www.mulesoft.org/schema/mule/munit
+        http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools
+        http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="source-file-lifecycle-subflows-test-suite.xml" />
+
+    <configuration-properties file="config-test.yaml" />
+
+    <!-- Test 1: Source file is available -->
+    <munit:test name="check-source-file-availability-subflow-file-found-test" description="sourceFileAvailable is true when the expected file exists">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock SFTP List With Matching File" processor="sftp:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[{ attributes: { fileName: 'inventory_01-01-2025.csv' } }, { attributes: { fileName: 'other.txt' } }]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set File Found Event">
+                <munit:variables>
+                    <munit:variable key="runId"          value="#['TEST-AVAIL-001']" />
+                    <munit:variable key="sourceFilePath" value="#['inbound/inventory_01-01-2025.csv']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="check-source-file-availability-subflow" doc:name="Invoke Availability Check" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert File Available True" expression="#[vars.sourceFileAvailable]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Expected File Name" expression="#[vars.expectedSourceFileName]" is="#[MunitTools::equalTo('inventory_01-01-2025.csv')]" />
+            <munit-tools:assert-that doc:name="Assert Temporary List Removed" expression="#[vars.availableSourceFiles default null]" is="#[MunitTools::nullValue()]" />
+            <munit-tools:verify-call doc:name="Verify Source Directory Listed" processor="sftp:list" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 2: Expected source file is not found -->
+    <munit:test name="check-source-file-availability-subflow-file-not-found-test" description="sourceFileAvailable is false when the expected file is absent">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock SFTP List Without Matching File" processor="sftp:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[{ attributes: { fileName: 'inventory_02-01-2025.csv' } }]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set File Not Found Event">
+                <munit:variables>
+                    <munit:variable key="runId"          value="#['TEST-AVAIL-002']" />
+                    <munit:variable key="sourceFilePath" value="#['inbound/inventory_01-01-2025.csv']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="check-source-file-availability-subflow" doc:name="Invoke Availability Check Not Found" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert File Available False" expression="#[vars.sourceFileAvailable]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Expected File Name" expression="#[vars.expectedSourceFileName]" is="#[MunitTools::equalTo('inventory_01-01-2025.csv')]" />
+            <munit-tools:assert-that doc:name="Assert Temporary List Removed" expression="#[vars.availableSourceFiles default null]" is="#[MunitTools::nullValue()]" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 3: Source directory is empty -->
+    <munit:test name="check-source-file-availability-subflow-empty-directory-test" description="sourceFileAvailable is false when the directory is empty">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Empty SFTP Source Directory" processor="sftp:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Source Directory']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['availableSourceFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Empty Directory Event">
+                <munit:variables>
+                    <munit:variable key="runId"          value="#['TEST-AVAIL-003']" />
+                    <munit:variable key="sourceFilePath" value="#['inbound/inventory_01-01-2025.csv']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="check-source-file-availability-subflow" doc:name="Invoke Availability Check Empty" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert File Not Available" expression="#[vars.sourceFileAvailable]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Empty List Removed" expression="#[vars.availableSourceFiles default null]" is="#[MunitTools::nullValue()]" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 4: File is not a duplicate -->
+    <munit:test name="check-file-idempotency-subflow-not-duplicate-test" description="A new file is not marked as duplicate">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock File History Does Not Contain Key" processor="os:contains">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Check File Processing History']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['duplicateFile']" value="#[false]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Non Duplicate Event">
+                <munit:variables>
+                    <munit:variable key="runId"                  value="#['TEST-IDEM-001']" />
+                    <munit:variable key="triggerType"            value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"         value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName" value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="runStatus"              value="#['PROCESSING']" />
+                    <munit:variable key="lockAcquired"           value="#[true]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="check-file-idempotency-subflow" doc:name="Invoke Idempotency Check" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Not Duplicate" expression="#[vars.duplicateFile]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Idempotency Key" expression="#[vars.idempotencyKey]" is="#[MunitTools::equalTo('inventory::processed::inventory_01-01-2025.csv')]" />
+            <munit-tools:assert-that doc:name="Assert Run Status Unchanged" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('PROCESSING')]" />
+            <munit-tools:assert-that doc:name="Assert Lock Remains Acquired" expression="#[vars.lockAcquired]" is="#[MunitTools::equalTo(true)]" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 5: File is a duplicate -->
+    <munit:test name="check-file-idempotency-subflow-duplicate-test" description="A previously processed file is marked duplicate and releases the lock">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock File History Contains Key" processor="os:contains">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Check File Processing History']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['duplicateFile']" value="#[true]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Duplicate Lock Release" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Duplicate']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Duplicate Event">
+                <munit:variables>
+                    <munit:variable key="runId"                  value="#['TEST-IDEM-002']" />
+                    <munit:variable key="triggerType"            value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"         value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName" value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="runStatus"              value="#['PROCESSING']" />
+                    <munit:variable key="lockAcquired"           value="#[true]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="check-file-idempotency-subflow" doc:name="Invoke Duplicate Idempotency Check" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Duplicate True" expression="#[vars.duplicateFile]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Duplicate Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('DUPLICATE_FILE')]" />
+            <munit-tools:assert-that doc:name="Assert Lock Released" expression="#[vars.lockAcquired default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:verify-call doc:name="Verify Duplicate Lock Released" processor="os:remove" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Duplicate']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 6: Duplicate lock is already missing -->
+    <munit:test name="check-file-idempotency-subflow-duplicate-lock-missing-test" description="KEY_NOT_FOUND while releasing duplicate lock is handled">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Duplicate History For Missing Lock" processor="os:contains">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Check File Processing History']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['duplicateFile']" value="#[true]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Missing Duplicate Lock" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Duplicate']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_NOT_FOUND" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Duplicate Missing Lock Event">
+                <munit:variables>
+                    <munit:variable key="runId"                  value="#['TEST-IDEM-003']" />
+                    <munit:variable key="triggerType"            value="#['MANUAL']" />
+                    <munit:variable key="sourceFilePath"         value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName" value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="runStatus"              value="#['PROCESSING']" />
+                    <munit:variable key="lockAcquired"           value="#[true]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="check-file-idempotency-subflow" doc:name="Invoke Duplicate Missing Lock Check" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Duplicate Still True" expression="#[vars.duplicateFile]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Duplicate Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('DUPLICATE_FILE')]" />
+            <munit-tools:assert-that doc:name="Assert Lock Treated As Released" expression="#[vars.lockAcquired default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:verify-call doc:name="Verify Missing Lock Removal Attempt" processor="os:remove" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Duplicate']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 7: Claim source file successfully -->
+    <munit:test name="claim-source-file-subflow-success-test" description="Claimed source is moved and read successfully">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Claim Source File Move" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Claim Source File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Read Claimed CSV" processor="sftp:read">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Read Claimed Inventory CSV']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:payload value="#['SKU,StoreId,Type,Quantity,Timestamp&#10;SKU001,STORE001,Standard,10,1/15/2025 10:30&#10;']" mediaType="application/csv; header=true" encoding="UTF-8" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Claim Source File Event">
+                <munit:variables>
+                    <munit:variable key="runId"                  value="#['TEST-CLAIM-001']" />
+                    <munit:variable key="triggerType"            value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"         value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName" value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="processingDirectory"    value="#['processing']" />
+                    <munit:variable key="businessDate"           value="#['01-01-2025']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="claim-source-file-subflow" doc:name="Invoke Claim Source File" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Source Claimed" expression="#[vars.sourceClaimed]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Processing Path" expression="#[vars.processingSourceFilePath]" is="#[MunitTools::equalTo('processing/inventory_01-01-2025.csv')]" />
+            <munit-tools:verify-call doc:name="Verify Claim Move" processor="sftp:move" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Claim Source File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Claimed File Read" processor="sftp:read" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Read Claimed Inventory CSV']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 8: Claimed source is moved to error -->
+    <munit:test name="move-source-to-error-subflow-claimed-file-test" description="Claimed source is moved to the error directory">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Move To Error Directory" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Claimed Error Move Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-ERR-001']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceClaimed"            value="#[true]" />
+                    <munit:variable key="processingSourceFilePath" value="#['processing/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName"   value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="errorDirectory"           value="#['error']" />
+                    <munit:variable key="runStatus"                value="#['FAILED']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="move-source-to-error-subflow" doc:name="Invoke Move Source To Error" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:verify-call doc:name="Verify Error Move" processor="sftp:move" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:assert-that doc:name="Assert Source Claimed Cleared" expression="#[vars.sourceClaimed]" is="#[MunitTools::equalTo(false)]" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 9: Unclaimed source is not moved -->
+    <munit:test name="move-source-to-error-subflow-not-claimed-test" description="Unclaimed source is not moved">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Move That Must Not Run" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Unclaimed Source Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-ERR-002']" />
+                    <munit:variable key="triggerType"              value="#['MANUAL']" />
+                    <munit:variable key="sourceClaimed"            value="#[false]" />
+                    <munit:variable key="processingSourceFilePath" value="#['processing/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName"   value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="errorDirectory"           value="#['error']" />
+                    <munit:variable key="runStatus"                value="#['FAILED']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="move-source-to-error-subflow" doc:name="Invoke Move Source To Error Unclaimed" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:verify-call doc:name="Verify Error Move Not Called" processor="sftp:move" times="0">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 10: Error-directory move fails -->
+    <munit:test name="move-source-to-error-subflow-move-failure-test" description="Error-directory move failure is handled">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Error Move Failure" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="SFTP:ILLEGAL_PATH" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Error Move Failure Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-ERR-003']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceClaimed"            value="#[true]" />
+                    <munit:variable key="processingSourceFilePath" value="#['processing/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName"   value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="errorDirectory"           value="#['error']" />
+                    <munit:variable key="runStatus"                value="#['FAILED']" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="move-source-to-error-subflow" doc:name="Invoke Failing Error Move" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:verify-call doc:name="Verify Error Move Attempted" processor="sftp:move" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:assert-that doc:name="Assert Source Still Claimed" expression="#[vars.sourceClaimed]" is="#[MunitTools::equalTo(true)]" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 11: Successful finalization -->
+    <munit:test name="finalize-successful-inventory-run-subflow-success-test" description="Successful run is archived, stored, unlocked and notified">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Empty Valid Staging List" processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Valid Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedValidFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Empty Rejected Staging List" processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Rejected Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedRejectedFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Archive Source" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Archive Processed Source File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Store Completion" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Store File Processing Completion']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Release Active Lock" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Success Notification" processor="email:send">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Successful Finalization Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-FIN-001']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName"   value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="processingSourceFilePath" value="#['processing/inventory_01-01-2025.csv']" />
+                    <munit:variable key="archiveDirectory"         value="#['archive']" />
+                    <munit:variable key="validStagingDirectory"    value="#['C:/mule_files/process/records/valid']" />
+                    <munit:variable key="rejectedStagingDirectory" value="#['C:/mule_files/process/records/rejected']" />
+                    <munit:variable key="targetDirectory"          value="#['outbound']" />
+                    <munit:variable key="rejectedTargetDirectory"  value="#['rejected']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="idempotencyKey"           value="#['inventory::processed::inventory_01-01-2025.csv']" />
+                    <munit:variable key="batchResult"              value="#[{ loadedRecords: 100, successfulRecords: 98, failedRecords: 0 }]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="finalize-successful-inventory-run-subflow" doc:name="Invoke Successful Finalization" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Completed Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('COMPLETED')]" />
+            <munit-tools:assert-that doc:name="Assert Success Notification" expression="#[vars.notificationType]" is="#[MunitTools::equalTo('SUCCESS')]" />
+            <munit-tools:verify-call doc:name="Verify Archive Called" processor="sftp:move" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Archive Processed Source File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Completion Stored" processor="os:store" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Store File Processing Completion']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Lock Released" processor="os:remove" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Success Email" processor="email:send" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 12: Archive failure -->
+    <munit:test name="finalize-successful-inventory-run-subflow-archive-failure-test" description="Archive failure sets ARCHIVE_FAILED and propagates the error" expectedErrorType="ANY">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Empty Valid List For Archive Failure" processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Valid Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedValidFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Empty Rejected List For Archive Failure" processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Rejected Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedRejectedFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Archive Failure" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Archive Processed Source File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="SFTP:CONNECTIVITY" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Failure Move To Error" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Move Failed Source File to Error']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Failure Lock Release" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock After Publication Failure']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Failure Notification" processor="email:send">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Archive Failure Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-FIN-002']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName"   value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="processingSourceFilePath" value="#['processing/inventory_01-01-2025.csv']" />
+                    <munit:variable key="archiveDirectory"         value="#['archive']" />
+                    <munit:variable key="validStagingDirectory"    value="#['C:/mule_files/process/records/valid']" />
+                    <munit:variable key="rejectedStagingDirectory" value="#['C:/mule_files/process/records/rejected']" />
+                    <munit:variable key="targetDirectory"          value="#['outbound']" />
+                    <munit:variable key="rejectedTargetDirectory"  value="#['rejected']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="idempotencyKey"           value="#['inventory::processed::inventory_01-01-2025.csv']" />
+                    <munit:variable key="sourceClaimed"            value="#[false]" />
+                    <munit:variable key="batchResult"              value="#[{ loadedRecords: 50, successfulRecords: 50, failedRecords: 0 }]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="finalize-successful-inventory-run-subflow" doc:name="Invoke Archive Failure Finalization" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Archive Failed Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('ARCHIVE_FAILED')]" />
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 13: Lock is missing after successful finalization -->
+    <munit:test name="finalize-successful-inventory-run-subflow-lock-missing-after-success-test" description="Missing active lock after success is handled">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Empty Valid List For Missing Lock" processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Valid Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedValidFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Empty Rejected List For Missing Lock" processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Rejected Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedRejectedFiles']" value="#[[]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Archive Before Missing Lock" processor="sftp:move">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Archive Processed Source File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Store Completion Before Missing Lock" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Store File Processing Completion']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Missing Active Lock" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Release Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_NOT_FOUND" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Notification After Missing Lock" processor="email:send">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Missing Lock Finalization Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-FIN-003']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="expectedSourceFileName"   value="#['inventory_01-01-2025.csv']" />
+                    <munit:variable key="processingSourceFilePath" value="#['processing/inventory_01-01-2025.csv']" />
+                    <munit:variable key="archiveDirectory"         value="#['archive']" />
+                    <munit:variable key="validStagingDirectory"    value="#['C:/mule_files/process/records/valid']" />
+                    <munit:variable key="rejectedStagingDirectory" value="#['C:/mule_files/process/records/rejected']" />
+                    <munit:variable key="targetDirectory"          value="#['outbound']" />
+                    <munit:variable key="rejectedTargetDirectory"  value="#['rejected']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="idempotencyKey"           value="#['inventory::processed::inventory_01-01-2025.csv']" />
+                    <munit:variable key="batchResult"              value="#[{ loadedRecords: 80, successfulRecords: 80, failedRecords: 0 }]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="finalize-successful-inventory-run-subflow" doc:name="Invoke Missing Lock Finalization" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Completed Despite Missing Lock" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('COMPLETED')]" />
+            <munit-tools:verify-call doc:name="Verify Email After Missing Lock" processor="email:send" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Send Inventory Notification']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+</mule>

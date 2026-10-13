@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?> <mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:file="http://www.mulesoft.org/schema/mule/file" xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp" xsi:schemaLocation=" http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd"> <sub-flow name="publish-output-files-subflowSub_Flow" doc:name="Publish Output Files"> <file:list doc:name="List Valid Staged Files" config-ref="Local_File_Config" directoryPath="#[vars.validStagingDirectory]" recursive="false" target="stagedValidFiles" /> <foreach doc:name="Publish Valid Store Files" collection="#[vars.stagedValidFiles default []]"> <ee:transform doc:name="Initialize Valid Publication Context">
+
+    <ee:variables>
+
+        <ee:set-variable variableName="stagedFileName"><![CDATA[
+%dw 2.0
+output application/java
+---
+(attributes.fileName default "") as String
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="stagedFilePath"><![CDATA[
+%dw 2.0
+output application/java
+
+var fileName =
+    (attributes.fileName default "") as String
+
+var stagingDirectory =
+    (vars.validStagingDirectory default "") as String
+
+---
+stagingDirectory
+++ "/"
+++ fileName
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="finalFileName"><![CDATA[
+%dw 2.0
+output application/java
+
+var fileName =
+    (attributes.fileName default "") as String
+
+---
+fileName replace /\.part$/ with ""
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="remoteTemporaryPath"><![CDATA[
+%dw 2.0
+output application/java
+
+var stagedName =
+    (attributes.fileName default "") as String
+
+var finalName =
+    stagedName replace /\.part$/ with ""
+
+var remoteDirectory =
+    (vars.targetDirectory default "outbound") as String
+
+---
+remoteDirectory
+++ "/."
+++ finalName
+++ ".part"
+        ]]></ee:set-variable>
+
+    </ee:variables>
+
+</ee:transform>
+			<sftp:write doc:name="Upload Valid Temporary File" config-ref="SFTP_Config" path="#[vars.remoteTemporaryPath]" mode="OVERWRITE" createParentDirectories="true" /> <sftp:rename doc:name="Rename Valid Temporary File" config-ref="SFTP_Config" path="#[vars.remoteTemporaryPath]" to="#[vars.finalFileName]" overwrite="true" /> <file:delete doc:name="Delete Valid Local Staging File" config-ref="Local_File_Config" path="#[vars.stagedFilePath]" /> <logger doc:name="Log Valid File Publication" level="INFO" message='#[output application/json --- { event: "VALID_STORE_FILE_PUBLISHED", finalFileName: vars.finalFileName, remoteFinalFile: vars.targetDirectory ++ "/" ++ vars.finalFileName }]' /> </foreach> <file:list doc:name="List Rejected Staged Files" config-ref="Local_File_Config" directoryPath="#[vars.rejectedStagingDirectory]" recursive="false" target="stagedRejectedFiles" /> <foreach doc:name="Publish Rejected Files" collection="#[vars.stagedRejectedFiles default []]"> <ee:transform doc:name="Initialize Rejected Publication Context">
+
+    <ee:variables>
+
+        <ee:set-variable variableName="stagedRejectFileName"><![CDATA[
+%dw 2.0
+output application/java
+---
+(attributes.fileName default "") as String
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="stagedRejectFilePath"><![CDATA[
+%dw 2.0
+output application/java
+
+var fileName =
+    (attributes.fileName default "") as String
+
+var stagingDirectory =
+    (vars.rejectedStagingDirectory default "") as String
+
+---
+stagingDirectory
+++ "/"
+++ fileName
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="finalRejectFileName"><![CDATA[
+%dw 2.0
+output application/java
+
+var fileName =
+    (attributes.fileName default "") as String
+
+---
+fileName replace /\.part$/ with ""
+        ]]></ee:set-variable>
+
+        <ee:set-variable variableName="remoteRejectTemporaryPath"><![CDATA[
+%dw 2.0
+output application/java
+
+var stagedName =
+    (attributes.fileName default "") as String
+
+var finalName =
+    stagedName replace /\.part$/ with ""
+
+var remoteDirectory =
+    (vars.rejectedTargetDirectory default "rejected") as String
+
+---
+remoteDirectory
+++ "/."
+++ finalName
+++ ".part"
+        ]]></ee:set-variable>
+
+    </ee:variables>
+
+</ee:transform>
+			<sftp:write doc:name="Upload Rejected Temporary File" config-ref="SFTP_Config" path="#[vars.remoteRejectTemporaryPath]" mode="OVERWRITE" createParentDirectories="true" /> <sftp:rename doc:name="Rename Rejected Temporary File" config-ref="SFTP_Config" path="#[vars.remoteRejectTemporaryPath]" to="#[vars.finalRejectFileName]" overwrite="true" /> <file:delete doc:name="Delete Rejected Local Staging File" config-ref="Local_File_Config" path="#[vars.stagedRejectFilePath]" /> <logger doc:name="Log Rejected File Publication" level="INFO" message='#[output application/json --- { event: "REJECTED_FILE_PUBLISHED", finalFileName: vars.finalRejectFileName, remoteFinalFile: vars.rejectedTargetDirectory ++ "/" ++ vars.finalRejectFileName }]' /> </foreach>
+		<logger doc:name="Log Publication Completion" level="INFO" message='#[output application/json --- { event: "INVENTORY_OUTPUT_PUBLICATION_COMPLETED", targetDirectory: vars.targetDirectory, rejectedTargetDirectory: vars.rejectedTargetDirectory, validFilesFound: sizeOf(vars.stagedValidFiles default []), rejectedFilesFound: sizeOf(vars.stagedRejectedFiles default []) }]' /> </sub-flow> </mule>

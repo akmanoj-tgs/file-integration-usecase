@@ -1,0 +1,9 @@
+%dw 2.0
+
+type auto_51debfcb_f22d_4e64_8db7_bd355d9d66cf_Output_Payload = {|
+  status: String, 
+  message: String, 
+  sourceFile: String, 
+  businessDate: String {"format": "dd-MM-yyyy"}
+|}
+

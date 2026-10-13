@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:os="http://www.mulesoft.org/schema/mule/os"
+    xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+    xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/os
+        http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+        http://www.mulesoft.org/schema/mule/munit
+        http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools
+        http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config name="inventory-lock-subflows-test-suite.xml" />
+
+    <configuration-properties file="config-test.yaml" />
+
+    <!-- Test 1: Lock acquired on first attempt -->
+    <munit:test name="acquire-inventory-run-lock-subflow-first-try-test" description="Lock is acquired on the first attempt">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Initial Lock Creation Success" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set First Lock Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-LOCK-RUN-001']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="staleLockThresholdHours"  value="#[2]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="acquire-inventory-run-lock-subflow" doc:name="Invoke Acquire Lock Subflow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Lock Acquired" expression="#[vars.lockAcquired]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert No Stale Lock" expression="#[vars.staleLockDetected default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:verify-call doc:name="Verify Initial Lock Creation" processor="os:store" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Retrieve Not Called" processor="os:retrieve" times="0">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Stale Removal Not Called" processor="os:remove" times="0">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 2: Fresh lock (startedAt=2099, far future → NOT stale) → ALREADY_RUNNING -->
+    <munit:test name="acquire-inventory-run-lock-subflow-already-running-test" description="Fresh lock produces ALREADY_RUNNING">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Initial Fresh Lock Conflict" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_ALREADY_EXISTS" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Retrieve Fresh Lock" processor="os:retrieve">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['existingActiveRunLock']" value="#[{ runId: 'PREV-LOCK-RUN-001', triggerType: 'SCHEDULER', sourceFilePath: 'inbound/inventory_01-01-2025.csv', businessDate: '01-01-2025', status: 'PROCESSING', startedAt: '2099-01-01T00:00:00.000+05:30' }]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Fresh Lock Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-LOCK-RUN-002']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="staleLockThresholdHours"  value="#[2]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="acquire-inventory-run-lock-subflow" doc:name="Invoke Acquire Lock Subflow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Lock Not Acquired" expression="#[vars.lockAcquired]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Already Running" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('ALREADY_RUNNING')]" />
+            <munit-tools:assert-that doc:name="Assert Fresh Lock Not Stale" expression="#[vars.staleLockDetected default false]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Fresh Lock Owner" expression="#[vars.existingLockOwnerRunId default 'UNKNOWN_RUN']" is="#[MunitTools::equalTo('PREV-LOCK-RUN-001')]" />
+            <munit-tools:verify-call doc:name="Verify Existing Lock Retrieved" processor="os:retrieve" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Fresh Lock Not Removed" processor="os:remove" times="0">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 3: Stale lock (startedAt=2020, far past) → removed and replaced → PROCESSING -->
+    <munit:test name="acquire-inventory-run-lock-subflow-stale-lock-recovery-test" description="Stale lock is removed and replaced">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Initial Stale Lock Conflict" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_ALREADY_EXISTS" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Retrieve Stale Lock" processor="os:retrieve">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['existingActiveRunLock']" value="#[{ runId: 'STALE-RUN-001', triggerType: 'SCHEDULER', sourceFilePath: 'inbound/inventory_01-01-2025.csv', businessDate: '01-01-2025', status: 'PROCESSING', startedAt: '2020-01-01T00:00:00.000+05:30' }]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Remove Stale Lock" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Recovery Lock Creation" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock After Recovery']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Stale Recovery Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-LOCK-RUN-003']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="staleLockThresholdHours"  value="#[2]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="acquire-inventory-run-lock-subflow" doc:name="Invoke Acquire Lock Subflow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Stale Lock Detected" expression="#[vars.staleLockDetected]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Recovery Lock Acquired" expression="#[vars.lockAcquired]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Recovery Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('PROCESSING')]" />
+            <munit-tools:assert-that doc:name="Assert Stale Lock Owner" expression="#[vars.existingLockOwnerRunId default 'UNKNOWN_RUN']" is="#[MunitTools::equalTo('STALE-RUN-001')]" />
+            <munit-tools:verify-call doc:name="Verify Stale Lock Removed" processor="os:remove" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Recovery Lock Created" processor="os:store" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock After Recovery']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 4: Stale recovery conflicts with another execution → ALREADY_RUNNING -->
+    <munit:test name="acquire-inventory-run-lock-subflow-stale-recovery-conflict-test" description="Recovery store conflicts with another execution">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Initial Conflict For Race" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_ALREADY_EXISTS" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Retrieve Stale Race Lock" processor="os:retrieve">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['existingActiveRunLock']" value="#[{ runId: 'STALE-RUN-002', triggerType: 'SCHEDULER', sourceFilePath: 'inbound/inventory_01-01-2025.csv', businessDate: '01-01-2025', status: 'PROCESSING', startedAt: '2020-01-01T00:00:00.000+05:30' }]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Remove Stale Race Lock" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Recovery Race Conflict" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock After Recovery']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_ALREADY_EXISTS" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Recovery Race Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-LOCK-RUN-004']" />
+                    <munit:variable key="triggerType"              value="#['MANUAL']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="staleLockThresholdHours"  value="#[2]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="acquire-inventory-run-lock-subflow" doc:name="Invoke Acquire Lock Subflow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Race Stale Lock Detected" expression="#[vars.staleLockDetected]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Race Lock Not Acquired" expression="#[vars.lockAcquired]" is="#[MunitTools::equalTo(false)]" />
+            <munit-tools:assert-that doc:name="Assert Race Already Running" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('ALREADY_RUNNING')]" />
+            <munit-tools:verify-call doc:name="Verify Race Stale Lock Removed" processor="os:remove" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Race Recovery Store" processor="os:store" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock After Recovery']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+    <!-- Test 5: KEY_NOT_FOUND during stale removal (already gone) → lock acquired via recovery -->
+    <munit:test name="acquire-inventory-run-lock-subflow-stale-already-gone-test" description="KEY_NOT_FOUND during stale lock removal is handled by on-error-continue">
+        <munit:behavior>
+            <munit-tools:mock-when doc:name="Mock Initial Conflict For Missing Lock" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_ALREADY_EXISTS" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Retrieve Already Gone Lock" processor="os:retrieve">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Retrieve Existing Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['existingActiveRunLock']" value="#[{ runId: 'STALE-RUN-003', triggerType: 'SCHEDULER', sourceFilePath: 'inbound/inventory_01-01-2025.csv', businessDate: '01-01-2025', status: 'PROCESSING', startedAt: '2020-01-01T00:00:00.000+05:30' }]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Missing Stale Lock Removal" processor="os:remove">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:error typeId="OS:KEY_NOT_FOUND" />
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+            <munit-tools:mock-when doc:name="Mock Recovery After Missing Lock" processor="os:store">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock After Recovery']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+        </munit:behavior>
+        <munit:execution>
+            <munit:set-event doc:name="Set Already Gone Lock Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-LOCK-RUN-005']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="sourceFilePath"           value="#['inbound/inventory_01-01-2025.csv']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                    <munit:variable key="staleLockThresholdHours"  value="#[2]" />
+                </munit:variables>
+            </munit:set-event>
+            <flow-ref name="acquire-inventory-run-lock-subflow" doc:name="Invoke Acquire Lock Subflow" />
+        </munit:execution>
+        <munit:validation>
+            <munit-tools:assert-that doc:name="Assert Missing Lock Was Stale" expression="#[vars.staleLockDetected]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Lock Acquired After Missing Removal" expression="#[vars.lockAcquired]" is="#[MunitTools::equalTo(true)]" />
+            <munit-tools:assert-that doc:name="Assert Missing Removal Status" expression="#[vars.runStatus]" is="#[MunitTools::equalTo('PROCESSING')]" />
+            <munit-tools:verify-call doc:name="Verify Missing Lock Removal Attempt" processor="os:remove" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Remove Stale Active Run Lock']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+            <munit-tools:verify-call doc:name="Verify Recovery After Missing Removal" processor="os:store" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Create Active Run Lock After Recovery']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+        </munit:validation>
+    </munit:test>
+
+</mule>

@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:http="http://www.mulesoft.org/schema/mule/http" xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd 
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/http
+        http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd">
+
+    <flow
+        name="inventory-manual-trigger-flow"
+        doc:name="Inventory Manual Trigger Flow">
+
+        <http:listener
+            doc:name="Manual Processing Listener"
+            config-ref="HTTP_Listener_config"
+            path="/process"
+            allowedMethods="POST">
+
+            <http:response statusCode="202">
+                <http:body><![CDATA[#[payload]]]></http:body>
+            </http:response>
+
+            <http:error-response statusCode="500">
+                <http:body><![CDATA[#[output application/json
+---
+{
+    status: "FAILED",
+    message: error.description default "Inventory processing could not be started",
+    errorType: (error.errorType.identifier default "UNKNOWN") as String
+}]]]></http:body>
+            </http:error-response>
+
+        </http:listener>
+
+        <ee:transform doc:name="Initialize Manual Run Context" doc:id="1d8603c8-0b82-4441-b490-23f5e6d5d984" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+			</ee:message>
+			<ee:variables >
+				<ee:set-variable variableName="triggerType" ><![CDATA[%dw 2.0
+output application/java
+---
+"MANUAL"]]></ee:set-variable>
+				<ee:set-variable variableName="runId" ><![CDATA[%dw 2.0
+output application/java
+---
+"INV-"
+++ (
+    (now() >> "Asia/Kolkata")
+        as String {
+            format: "yyyyMMdd-HHmmss-SSS"
+        }
+)
+++ "-"
+++ uuid()]]></ee:set-variable>
+				<ee:set-variable variableName="businessDate" ><![CDATA[%dw 2.0
+output application/java
+---
+(now() >> "Asia/Kolkata")
+    as String {
+        format: "dd-MM-yyyy"
+}]]></ee:set-variable>
+				<ee:set-variable variableName="sourceFilePath" ><![CDATA[%dw 2.0
+output application/java
+---
+attributes.queryParams.sourceFile
+    default "inbound/sample_input_reject.csv"]]></ee:set-variable>
+			</ee:variables>
+		</ee:transform>
+		<logger
+            doc:name="Log Manual Run Trigger"
+            level="INFO"
+            message='#[output application/json
+---
+{
+    event: "INVENTORY_RUN_TRIGGERED",
+    triggerType: vars.triggerType,
+    runId: vars.runId,
+    sourceFilePath: vars.sourceFilePath,
+    businessDate: vars.businessDate,
+    triggeredAt:
+        (now() >> "Asia/Kolkata")
+            as String {
+                format: "yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX"
+            }
+}]' />
+
+        <flow-ref
+            doc:name="Start Inventory Processing"
+            name="inventory-processing-flowFlow" />
+
+        <set-payload
+            doc:name="Set Accepted Response"
+            value='#[output application/json&#10;---&#10;if ((vars.runStatus default "") == "MISSING_SOURCE_FILE")&#10;{&#10;    status: "NOT_STARTED",&#10;    message: "The expected inventory source file was not found",&#10;    runId: vars.runId,&#10;    sourceFile: vars.sourceFilePath,&#10;    businessDate: vars.businessDate&#10;}&#10;else if ((vars.runStatus default "") == "ALREADY_RUNNING")&#10;{&#10;    status: "NOT_STARTED",&#10;    message: "Another inventory execution is already running",&#10;    runId: vars.runId,&#10;    sourceFile: vars.sourceFilePath,&#10;    businessDate: vars.businessDate&#10;}&#10;else if ((vars.runStatus default "") == "DUPLICATE_FILE")&#10;{&#10;    status: "NOT_STARTED",&#10;    message: "The source file was already processed successfully",&#10;    runId: vars.runId,&#10;    sourceFile: vars.sourceFilePath,&#10;    businessDate: vars.businessDate&#10;}&#10;else&#10;{&#10;    status: "ACCEPTED",&#10;    message: "Inventory Batch Job was submitted successfully",&#10;    runId: vars.runId,&#10;    sourceFile: vars.sourceFilePath,&#10;    businessDate: vars.businessDate&#10;}]' />
+
+    </flow>
+
+</mule>

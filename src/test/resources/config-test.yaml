@@ -1,0 +1,5 @@
+email:
+  enabled: "true"
+  from: "sender@example.com"
+  recipients: "recipient@example.com"
+

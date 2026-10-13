@@ -1,0 +1,436 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule
+xmlns="http://www.mulesoft.org/schema/mule/core"
+xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+xmlns:os="http://www.mulesoft.org/schema/mule/os"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd 
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/core
+http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/ee/core
+http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/sftp
+http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+http://www.mulesoft.org/schema/mule/os
+http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+
+	<sub-flow name="check-source-file-availability-subflow" doc:id="5c1d572f-63c4-49b7-adfe-fb279e7aef91" >
+		<set-variable value='#[(vars.sourceFilePath splitBy "/")[-1]]' doc:name="Set Expected Source File Name" doc:id="13fef639-64a7-405a-bcd0-20f91c40166b" variableName="expectedSourceFileName"/>
+		<sftp:list doc:name="List Source Directory" doc:id="c20f0115-df6c-4be4-85e4-7389e701118c" config-ref="SFTP_Config" directoryPath='${directories.inbound}' target="availableSourceFiles"/>
+		<set-variable value='#[!isEmpty(&#10;        (vars.availableSourceFiles default [])&#10;            filter ((fileEntry) -&gt;&#10;                (&#10;                    (fileEntry.attributes.fileName default "")&#10;                        as String&#10;                )&#10;                ==&#10;                (&#10;                    (vars.expectedSourceFileName default "")&#10;                        as String&#10;                )&#10;            )&#10;    )]' doc:name="Check Source File Availability" doc:id="df4b79bd-5f37-427c-8cf5-19c5889f6115" variableName="sourceFileAvailable"/>
+		<remove-variable doc:name="Remove Source File List" doc:id="ce70a2f1-4f20-43d0-abb1-b87ecbcdd55f" variableName="availableSourceFiles"/>
+	</sub-flow>
+	
+	<sub-flow name="check-file-idempotency-subflow" doc:id="6fcfbe38-b269-4c81-b68b-e2c3c0307c56">
+
+    <ee:transform doc:name="Initialize Idempotency Context">
+
+        <ee:variables>
+
+            <ee:set-variable variableName="idempotencyKey"><![CDATA[
+%dw 2.0
+output application/java
+
+var sourceFileName =
+    (vars.expectedSourceFileName default "UNKNOWN_FILE") as String
+
+---
+"inventory::processed::"
+++ sourceFileName
+            ]]></ee:set-variable>
+
+            <ee:set-variable variableName="duplicateFile"><![CDATA[
+%dw 2.0
+output application/java
+---
+false
+            ]]></ee:set-variable>
+
+        </ee:variables>
+
+    </ee:transform>
+
+    <os:contains
+        doc:name="Check File Processing History"
+        key="#[vars.idempotencyKey]"
+        target="duplicateFile" />
+
+    <choice doc:name="Handle Duplicate Source File">
+
+        <when expression="#[vars.duplicateFile default false]">
+
+            <set-variable
+                doc:name="Set Duplicate File Status"
+                variableName="runStatus"
+                value='#["DUPLICATE_FILE"]' />
+
+            <logger
+                doc:name="Log Duplicate Source File"
+                level="WARN"
+                message='#[output application/json
+---
+{
+    event: "INVENTORY_DUPLICATE_SOURCE_FILE",
+    runId: vars.runId default "UNKNOWN_RUN",
+    triggerType: vars.triggerType default "UNKNOWN_TRIGGER",
+    sourceFilePath: vars.sourceFilePath default "UNKNOWN_SOURCE",
+    sourceFileName:
+        vars.expectedSourceFileName default "UNKNOWN_FILE",
+    idempotencyKey:
+        vars.idempotencyKey default "UNKNOWN_KEY",
+    runStatus: vars.runStatus,
+    message:
+        "This source file was already processed successfully. Processing will not start."
+}]' />
+
+            <try doc:name="Release Lock After Duplicate Detection">
+
+                <os:remove
+                    doc:name="Release Active Run Lock After Duplicate"
+                    key='${lock.activeKey}' />
+
+                <set-variable
+                    doc:name="Clear Lock Acquired Status After Duplicate"
+                    variableName="lockAcquired"
+                    value="#[false]" />
+
+                <logger
+                    doc:name="Log Lock Released After Duplicate"
+                    level="INFO"
+                    message='#[output application/json
+---
+{
+    event: "INVENTORY_RUN_LOCK_RELEASED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    runStatus: vars.runStatus,
+    lockKey: Mule::p("lock.activeKey"),
+    lockAcquired: vars.lockAcquired
+}]' />
+
+                <error-handler>
+
+                    <on-error-continue
+                        doc:name="Ignore Missing Lock After Duplicate"
+                        type="OS:KEY_NOT_FOUND"
+                        logException="false"
+                        enableNotifications="false">
+
+                        <set-variable
+                            doc:name="Clear Missing Lock Status After Duplicate"
+                            variableName="lockAcquired"
+                            value="#[false]" />
+
+                        <logger
+                            doc:name="Log Duplicate Lock Already Missing"
+                            level="DEBUG"
+                            message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_DUPLICATE_LOCK_ALREADY_MISSING",&#10;    runId: vars.runId default "UNKNOWN_RUN",&#10;    runStatus: vars.runStatus,&#10;    lockKey: Mule::p("lock.activeKey")&#10;}]' />
+
+                    </on-error-continue>
+
+                </error-handler>
+
+            </try>
+
+        </when>
+
+        <otherwise>
+
+            <logger
+                doc:name="Log File Is Eligible for Processing"
+                level="DEBUG"
+                message='#[output application/json
+---
+{
+    event: "INVENTORY_SOURCE_FILE_ELIGIBLE",
+    runId: vars.runId default "UNKNOWN_RUN",
+    sourceFileName:
+        vars.expectedSourceFileName default "UNKNOWN_FILE",
+    idempotencyKey:
+        vars.idempotencyKey default "UNKNOWN_KEY",
+    duplicateFile: vars.duplicateFile,
+    runStatus: vars.runStatus default "PROCESSING"
+}]' />
+
+        </otherwise>
+
+    </choice>
+
+</sub-flow>
+	<sub-flow name="claim-source-file-subflow" doc:id="ed2eba45-d85b-4516-8a28-b08e9d8b29e7" >
+		<ee:transform doc:name="Initialize Claimed Source Context" doc:id="42b3bbf3-e510-4413-b36c-c83669808323">
+							<ee:message>
+								<ee:set-payload><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+							</ee:message>
+							<ee:variables>
+								<ee:set-variable variableName="processingSourceFilePath"><![CDATA[%dw 2.0
+output application/java
+
+var destinationDirectory =
+    (vars.processingDirectory default "processing") as String
+
+var fileName =
+    (vars.expectedSourceFileName default "") as String
+
+---
+destinationDirectory
+++ "/"
+++ fileName]]></ee:set-variable>
+								<ee:set-variable variableName="sourceClaimed"><![CDATA[%dw 2.0
+output application/java
+---
+false]]></ee:set-variable>
+							</ee:variables>
+						</ee:transform>
+								<sftp:move doc:name="Claim Source File" doc:id="723bfc03-c432-4206-b114-6517fd1727bf" config-ref="SFTP_Config" sourcePath="#[vars.sourceFilePath]" targetPath="#[vars.processingDirectory]" renameTo="#[vars.expectedSourceFileName]" />
+								<set-variable value="#[true]" doc:name="Mark Source File Claimed" doc:id="734fc7d4-6305-43de-b003-158200588300" variableName="sourceClaimed" />
+								<logger level="INFO" doc:name="Log Source File Claimed" doc:id="78402498-3fe5-423e-90f6-cdd9695b6b02" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_SOURCE_FILE_CLAIMED",&#10;    runId: vars.runId,&#10;    triggerType: vars.triggerType,&#10;    originalSourceFilePath: vars.sourceFilePath,&#10;    processingSourceFilePath: vars.processingSourceFilePath,&#10;    sourceClaimed: vars.sourceClaimed&#10;}]' />
+								<sftp:read doc:name="Read Claimed Inventory CSV" config-ref="SFTP_Config" path="#[vars.processingSourceFilePath]" outputMimeType="application/csv; streaming=true; header=true">
+            <non-repeatable-stream />
+        </sftp:read>
+	</sub-flow>
+	<sub-flow name="finalize-successful-inventory-run-subflow" doc:id="e4b588cd-820c-412a-9095-0612d1bdf057" >
+		<try doc:name="Publish and Finalize Inventory Run" doc:id="f30e5c4c-c915-44f4-a2f6-d1267e2e2d5d">
+											<flow-ref doc:name="Publish Output Files" name="publish-output-files-subflowSub_Flow" />
+											<try doc:name="Archive Source File" doc:id="b7486f89-ac7a-40a2-a69b-19280b25089f">
+												<sftp:move doc:name="Archive Processed Source File" doc:id="9b0208b4-e545-499d-abb7-a86c5cbb2419" config-ref="SFTP_Config" sourcePath="#[vars.processingSourceFilePath]" targetPath="#[vars.archiveDirectory]" renameTo="#[vars.expectedSourceFileName]" />
+												<logger level="INFO" doc:name="Log Source File Archived" doc:id="f4f0f494-420f-4bb4-8599-104337a76133" message="#[output application/json&#10;---&#10;{&#10;    event: &quot;INVENTORY_SOURCE_FILE_ARCHIVED&quot;,&#10;    runId: vars.runId,&#10;    triggerType: vars.triggerType,&#10;    processingSourceFilePath: vars.processingSourceFilePath,&#10;    archiveSourceFilePath:&#10;        (vars.archiveDirectory default &quot;archive&quot;)&#10;        ++ &quot;/&quot;&#10;        ++ (vars.expectedSourceFileName default &quot;UNKNOWN_FILE&quot;),&#10;    archivedAt:&#10;        (now() &gt;&gt; (&quot;Asia/Kolkata&quot; as TimeZone))&#10;            as String {&#10;                format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;&#10;            }&#10;}]" />
+												<error-handler>
+													<on-error-propagate enableNotifications="true" logException="true" doc:name="Handle Archive Failure" doc:id="fefa7ae6-e491-4894-bb18-ec0c1d156af8" type="ANY">
+														<set-variable value='#["ARCHIVE_FAILED"]' doc:name="Set Archive Failed Status" doc:id="af1c4ba9-e8f8-4fb0-bdf5-e8a50c62fa61" variableName="runStatus" />
+														<logger level="ERROR" doc:name="Log Source Archive Failure&#10;" doc:id="eceeddb2-a769-4e03-81ae-f30296bc2764" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_SOURCE_ARCHIVE_FAILED",&#10;    runId: vars.runId,&#10;    triggerType: vars.triggerType,&#10;    processingSourceFilePath: vars.processingSourceFilePath,&#10;    expectedArchivePath:&#10;        (vars.archiveDirectory default "archive")&#10;        ++ "/"&#10;        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE"),&#10;    runStatus: vars.runStatus,&#10;    errorType:&#10;        (error.errorType.namespace default "MULE")&#10;        ++ ":"&#10;        ++ (error.errorType.identifier default "UNKNOWN"),&#10;    errorDescription:&#10;        error.description default "Source file archival failed"&#10;}]' />
+													</on-error-propagate>
+												</error-handler>
+											</try>
+											<os:store doc:name="Store File Processing Completion" doc:id="176942ca-d958-4e08-8faf-7b6eaee99857" key="#[vars.idempotencyKey]" failIfPresent="true">
+														<os:value><![CDATA[#[output application/java
+---
+{
+    runId: vars.runId,
+    sourceFileName: vars.expectedSourceFileName,
+    originalSourceFilePath: vars.sourceFilePath,
+    archiveSourceFilePath:
+        (vars.archiveDirectory default "archive")
+        ++ "/"
+        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE"),
+    businessDate: vars.businessDate,
+    status: "COMPLETED",
+    completedAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+            }
+}]]]></os:value>
+													</os:store>
+													<logger level="INFO" doc:name="Log File Processing Completion Stored" doc:id="01f3a514-d055-41a1-a92f-71da7f9d62bc" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_FILE_PROCESSING_COMPLETION_STORED",&#10;    runId: vars.runId,&#10;    sourceFileName: vars.expectedSourceFileName,&#10;    idempotencyKey: vars.idempotencyKey,&#10;    processingStatus: "COMPLETED"&#10;}]' />
+													<set-variable value='#["COMPLETED"]' doc:name="Set Completed Status" doc:id="4eab8ca3-948b-4c54-a29b-53b8fd253319" variableName="runStatus" />
+											<try doc:name="Release Lock After Successful Publication" doc:id="ce25a838-6f67-4d15-9622-5d0299d7f640">
+												<os:remove doc:name="Release Active Run Lock" doc:id="27c81167-a096-4a40-af1d-2788e11625c8" key='${lock.activeKey}' />
+												<logger level="INFO" doc:name="Log Active Run Lock Released" doc:id="d82c2dd2-e66a-4dbe-a0b0-fcbf8191a355" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_RUN_LOCK_RELEASED",&#10;    runId: vars.runId,&#10;    runStatus: "COMPLETED",&#10;    lockKey: Mule::p("lock.activeKey")&#10;}]' />
+												<error-handler>
+													<on-error-continue enableNotifications="true" logException="false" doc:name="Ignore Missing Lock After Successful Publication" doc:id="86798016-206d-43b9-9dda-0c7d1ca8dd81" type="OS:KEY_NOT_FOUND" />
+												</error-handler>
+											</try>
+											<ee:transform doc:name="Prepare Success Notification" doc:id="8490baca-ad05-4d9c-b614-32885c4ca259">
+
+    <ee:variables>
+
+        <ee:set-variable
+            variableName="notificationBody"
+            resource="email-templates/success-notification.dwl" />
+
+    </ee:variables>
+
+</ee:transform>
+			<set-variable value='#["SUCCESS"]' doc:name="Set Success Notification Type" doc:id="3e1ad23f-9104-4364-8ff1-1a88e76a009f" variableName="notificationType"/>
+			<set-variable value='#["[Inventory Integration] COMPLETED - "&#10;        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE")]' doc:name="Set Success Notification Subject" doc:id="09b720dd-5a5a-4478-80a1-dfdb8bb95cf3" variableName="notificationSubject"/>
+			<set-variable value="#[Mule::p('email.recipients')]" doc:name="Set Success Notification Recipient" doc:id="aa316ca8-3591-4bc0-a323-ae7d7fc7288d" variableName="notificationRecipient"/>
+			<flow-ref doc:name="Send Completion Notificationz" doc:id="8b2b5908-9f5b-42c1-b8a1-b9b396cc46eb" name="send-inventory-notification-flow"/>
+			<error-handler>
+												<on-error-propagate enableNotifications="true" logException="true" doc:name="Handle Publication Failure" doc:id="b51f6898-a9c3-4871-bd9d-404e0c40a2d1" type="ANY">
+												<set-variable
+    doc:name="Preserve Finalization Error Type"
+    variableName="notificationErrorType"
+    value='#[(
+        error.errorType.namespace default "MULE"
+    )
+    ++ ":"
+    ++ (
+        error.errorType.identifier default "UNKNOWN"
+    )]' />
+
+<set-variable
+    doc:name="Preserve Finalization Error Description"
+    variableName="notificationErrorDescription"
+    value='#[error.description
+        default "Inventory finalization failed"]' />
+													<set-variable value='#[if ((vars.runStatus default "") == "ARCHIVE_FAILED")&#10;        "ARCHIVE_FAILED"&#10;    else&#10;        "PUBLICATION_FAILED"]' doc:name="Set Publication Failed Status" doc:id="b68a17dc-c318-439a-aff7-74659d39d46b" variableName="runStatus" />
+													<flow-ref doc:name="Move Failed Source File to Error" doc:id="b0dab1b0-0933-4ec4-bccd-e46d4a61981f" name="move-source-to-error-subflow" />
+													<try doc:name="Move Failed Source File to Error" doc:id="facd9b4c-0fe3-4f40-a587-ed41eb667321">
+														<os:remove doc:name="Release Active Run Lock After Publication Failure" doc:id="7726a4ec-7977-4218-a7c3-2e30de1901a0" key='${lock.activeKey}' />
+														<error-handler>
+															<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="2220665b-7c72-4e2a-8595-22f6cab4257d" type="OS:KEY_NOT_FOUND" />
+														</error-handler>
+													</try>
+													<ee:transform doc:name="Prepare Finalization Failure Notification">
+
+    <ee:variables>
+
+        <ee:set-variable
+            variableName="notificationBody"
+            resource="email-templates/finalization-failure-notification.dwl" />
+
+    </ee:variables>
+
+</ee:transform>
+<set-variable
+    doc:name="Set Finalization Failure Notification Type"
+    variableName="notificationType"
+    value="#[vars.runStatus default 'PUBLICATION_FAILED']" />
+<set-variable
+    doc:name="Set Finalization Failure Subject"
+    variableName="notificationSubject"
+    value='#[
+        "[Inventory Integration] "
+        ++ (vars.runStatus default "PUBLICATION_FAILED")
+        ++ " - "
+        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE")
+    ]' />
+<flow-ref
+    doc:name="Send Finalization Failure Notification"
+    name="send-inventory-notification-flow" />
+													<logger level="INFO" doc:name="Log Publication Failure" doc:id="a6566ced-0736-4b35-8426-fade5b91515e" message='#[output application/json&#10;---&#10;{&#10;event: "INVENTORY_PUBLICATION_FAILED",&#10;    runId: vars.runId,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    runStatus: vars.runStatus,&#10;    errorType:&#10;        (error.errorType.identifier default "UNKNOWN") as String,&#10;    errorDescription:&#10;        error.description default "Output publication failed",&#10;    lockCleanupAttempted: true}]' />
+												</on-error-propagate>
+											</error-handler>
+										</try>
+		
+	</sub-flow>
+	<sub-flow name="move-source-to-error-subflow" doc:id="9142c801-c72a-4fef-9a0c-369a132d5637" >
+
+        <choice doc:name="Check Source Claim Status">
+
+            <when expression="#[vars.sourceClaimed default false]">
+
+                <try doc:name="Move Source to Error Safely">
+
+                    <sftp:move
+                        doc:name="Move Failed Source File to Error"
+                        config-ref="SFTP_Config"
+                        sourcePath="#[vars.processingSourceFilePath]"
+                        targetPath="#[vars.errorDirectory default 'error']"
+                        renameTo="#[vars.expectedSourceFileName]"
+                        overwrite="false"
+                        createParentDirectories="true" />
+
+                    <set-variable
+                        doc:name="Mark Source File Moved to Error"
+                        variableName="sourceClaimed"
+                        value="#[false]" />
+
+                    <logger
+                        doc:name="Log Source File Moved to Error"
+                        level="WARN"
+                        message='#[output application/json
+---
+{
+    event: "INVENTORY_SOURCE_FILE_MOVED_TO_ERROR",
+    runId: vars.runId default "UNKNOWN_RUN",
+    triggerType: vars.triggerType default "UNKNOWN_TRIGGER",
+    processingSourceFilePath:
+        vars.processingSourceFilePath default "UNKNOWN_SOURCE",
+    errorSourceFilePath:
+        (vars.errorDirectory default "error")
+        ++ "/"
+        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE"),
+    runStatus: vars.runStatus default "FAILED",
+    sourceClaimed: vars.sourceClaimed,
+    movedAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX"
+            }
+}]' />
+
+                    <error-handler>
+
+                        <on-error-continue
+                            doc:name="Handle Source Error Move Failure"
+                            type="ANY"
+                            logException="false"
+                            enableNotifications="false">
+
+                            <logger
+                                doc:name="Log Source Error Move Failure"
+                                level="ERROR"
+                                message='#[output application/json
+---
+{
+    event: "INVENTORY_SOURCE_ERROR_MOVE_FAILED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    triggerType: vars.triggerType default "UNKNOWN_TRIGGER",
+    processingSourceFilePath:
+        vars.processingSourceFilePath default "UNKNOWN_SOURCE",
+    expectedErrorSourceFilePath:
+        (vars.errorDirectory default "error")
+        ++ "/"
+        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE"),
+    runStatus: vars.runStatus default "FAILED",
+    sourceClaimed: vars.sourceClaimed default false,
+    moveErrorType:
+        (error.errorType.namespace default "MULE")
+        ++ ":"
+        ++ (error.errorType.identifier default "UNKNOWN"),
+    moveErrorDescription:
+        error.description
+            default "Failed to move the claimed source file to the error directory",
+    manualRecoveryRequired: true,
+    failedAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd&apos;T&apos;HH:mm:ss.SSSXXX"
+            }
+}]' />
+
+                        </on-error-continue>
+
+                    </error-handler>
+
+                </try>
+
+            </when>
+
+            <otherwise>
+
+                <logger
+                    doc:name="Log Source Error Move Not Required"
+                    level="DEBUG"
+                    message='#[output application/json
+---
+{
+    event: "INVENTORY_SOURCE_ERROR_MOVE_NOT_REQUIRED",
+    runId: vars.runId default "UNKNOWN_RUN",
+    triggerType: vars.triggerType default "UNKNOWN_TRIGGER",
+    sourceFilePath:
+        vars.sourceFilePath default "UNKNOWN_SOURCE",
+    processingSourceFilePath:
+        vars.processingSourceFilePath default "NOT_CLAIMED",
+    runStatus: vars.runStatus default "FAILED",
+    sourceClaimed: vars.sourceClaimed default false,
+    reason:
+        "The source file was not claimed by this execution, so no processing-to-error movement is required."
+}]' />
+
+            </otherwise>
+
+        </choice>
+
+    </sub-flow>
+
+</mule>

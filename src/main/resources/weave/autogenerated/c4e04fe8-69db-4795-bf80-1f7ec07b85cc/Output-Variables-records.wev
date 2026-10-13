@@ -1,0 +1,10 @@
+%dw 2.0
+
+type auto_c4e04fe8_69db_4795_bf80_1f7ec07b85cc_Output_Variables_records = Array<{|  message: org_mule_runtime_api_message_Message {"typeId": "org.mule.runtime.api.message.Message"},   variables: {|    businessDate: String {"format": "dd-MM-yyyy"},     validStagingDirectory: String,     rejectedStagingDirectory: String,     targetDirectory: String,     rejectedTargetDirectory: String,     rejectedStagingFile: String,     sourceFilePath: String  |}|}>
+type org_mule_runtime_api_message_Message = {|
+  payload: Any, 
+  attributes: Null
+|} {"typeId": "org.mule.runtime.api.message.Message"}
+
+
+

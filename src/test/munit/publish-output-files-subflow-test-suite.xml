@@ -1,0 +1,728 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule
+    xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:file="http://www.mulesoft.org/schema/mule/file"
+    xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
+    xmlns:munit="http://www.mulesoft.org/schema/mule/munit"
+    xmlns:munit-tools="http://www.mulesoft.org/schema/mule/munit-tools"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/munit http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd 
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/file
+        http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd
+        http://www.mulesoft.org/schema/mule/sftp
+        http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd
+        http://www.mulesoft.org/schema/mule/munit
+        http://www.mulesoft.org/schema/mule/munit/current/mule-munit.xsd
+        http://www.mulesoft.org/schema/mule/munit-tools
+        http://www.mulesoft.org/schema/mule/munit-tools/current/mule-munit-tools.xsd">
+
+    <munit:config
+        name="publish-output-files-subflow-test-suite.xml" />
+
+    <configuration-properties
+        file="config-test.yaml" />
+
+    <!-- ========================================================= -->
+    <!-- Test 1: Both staging directories are empty                -->
+    <!-- ========================================================= -->
+
+    <munit:test
+        name="publish-output-files-subflow-empty-staging-directories-test"
+        description="Empty staging directories cause no SFTP publishing operations">
+
+        <munit:behavior>
+
+            <munit-tools:mock-when
+                doc:name="Mock Empty Valid Staging Directory"
+                processor="file:list">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Valid Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+
+                    <munit-tools:variables>
+
+                        <munit-tools:variable
+                            key="#['stagedValidFiles']"
+                            value="#[[]]" />
+
+                    </munit-tools:variables>
+
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Empty Rejected Staging Directory"
+                processor="file:list">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Rejected Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+
+                    <munit-tools:variables>
+
+                        <munit-tools:variable
+                            key="#['stagedRejectedFiles']"
+                            value="#[[]]" />
+
+                    </munit-tools:variables>
+
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event
+                doc:name="Set Empty Staging Event">
+
+                <munit:variables>
+
+                    <munit:variable
+                        key="runId"
+                        value="#['TEST-PUB-001']" />
+
+                    <munit:variable
+                        key="triggerType"
+                        value="#['SCHEDULER']" />
+
+                    <munit:variable
+                        key="validStagingDirectory"
+                        value="#['C:/mule_files/process/records/valid']" />
+
+                    <munit:variable
+                        key="rejectedStagingDirectory"
+                        value="#['C:/mule_files/process/records/rejected']" />
+
+                    <munit:variable
+                        key="targetDirectory"
+                        value="#['outbound']" />
+
+                    <munit:variable
+                        key="rejectedTargetDirectory"
+                        value="#['rejected']" />
+
+                    <munit:variable
+                        key="businessDate"
+                        value="#['01-01-2025']" />
+
+                </munit:variables>
+
+            </munit:set-event>
+
+            <flow-ref
+                doc:name="Invoke Publish Output Files Subflow"
+                name="publish-output-files-subflowSub_Flow" />
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:assert-that
+                doc:name="Assert Valid Staging List Is Empty"
+                expression="#[sizeOf(vars.stagedValidFiles default [])]"
+                is="#[MunitTools::equalTo(0)]" />
+
+            <munit-tools:assert-that
+                doc:name="Assert Rejected Staging List Is Empty"
+                expression="#[sizeOf(vars.stagedRejectedFiles default [])]"
+                is="#[MunitTools::equalTo(0)]" />
+
+            <munit-tools:verify-call
+                doc:name="Verify Valid Directory Listed"
+                processor="file:list"
+                times="1">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Valid Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify Rejected Directory Listed"
+                processor="file:list"
+                times="1">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Rejected Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify No Valid SFTP Upload"
+                processor="sftp:write"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Upload Valid Temporary File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify No Rejected SFTP Upload"
+                processor="sftp:write"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Upload Rejected Temporary File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify No Valid Local Delete"
+                processor="file:delete"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Delete Valid Local Staging File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify No Rejected Local Delete"
+                processor="file:delete"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Delete Rejected Local Staging File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+
+    <!-- ========================================================= -->
+    <!-- Test 2: Empty directories specifically skip file deletion -->
+    <!-- ========================================================= -->
+
+    <munit:test
+        name="publish-output-files-subflow-no-delete-when-empty-test"
+        description="No local staged files are deleted when both lists are empty">
+
+        <munit:behavior>
+
+            <munit-tools:mock-when
+                doc:name="Mock Empty Valid List For Delete Test"
+                processor="file:list">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Valid Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+
+                    <munit-tools:variables>
+
+                        <munit-tools:variable
+                            key="#['stagedValidFiles']"
+                            value="#[[]]" />
+
+                    </munit-tools:variables>
+
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Empty Rejected List For Delete Test"
+                processor="file:list">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Rejected Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+
+                    <munit-tools:variables>
+
+                        <munit-tools:variable
+                            key="#['stagedRejectedFiles']"
+                            value="#[[]]" />
+
+                    </munit-tools:variables>
+
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event
+                doc:name="Set Empty Delete Test Event">
+
+                <munit:variables>
+
+                    <munit:variable
+                        key="runId"
+                        value="#['TEST-PUB-002']" />
+
+                    <munit:variable
+                        key="triggerType"
+                        value="#['MANUAL']" />
+
+                    <munit:variable
+                        key="validStagingDirectory"
+                        value="#['C:/mule_files/process/records/valid']" />
+
+                    <munit:variable
+                        key="rejectedStagingDirectory"
+                        value="#['C:/mule_files/process/records/rejected']" />
+
+                    <munit:variable
+                        key="targetDirectory"
+                        value="#['outbound']" />
+
+                    <munit:variable
+                        key="rejectedTargetDirectory"
+                        value="#['rejected']" />
+
+                    <munit:variable
+                        key="businessDate"
+                        value="#['01-01-2025']" />
+
+                </munit:variables>
+
+            </munit:set-event>
+
+            <flow-ref
+                doc:name="Invoke Publish Output Files Delete Test"
+                name="publish-output-files-subflowSub_Flow" />
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:verify-call
+                doc:name="Verify Valid File Not Deleted"
+                processor="file:delete"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Delete Valid Local Staging File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify Rejected File Not Deleted"
+                processor="file:delete"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Delete Rejected Local Staging File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify Valid Temporary Upload Not Called"
+                processor="sftp:write"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Upload Valid Temporary File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify Rejected Temporary Upload Not Called"
+                processor="sftp:write"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Upload Rejected Temporary File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+
+    <!-- ========================================================= -->
+    <!-- Test 3: Valid-file SFTP upload failure propagates          -->
+    <!-- ========================================================= -->
+
+    <munit:test
+        name="publish-output-files-subflow-sftp-write-failure-test"
+        description="SFTP connectivity error during valid upload propagates"
+        expectedErrorType="SFTP:CONNECTIVITY">
+
+        <munit:behavior>
+
+            <munit-tools:mock-when
+                doc:name="Mock One Valid Staged File"
+                processor="file:list">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['List Valid Staged Files']" />
+
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+
+                    <munit-tools:variables>
+
+                        <munit-tools:variable
+                            key="#['stagedValidFiles']"
+                            value="#[
+                                [
+                                    {
+                                        attributes: {
+                                            fileName:
+                                                'inventory_STORE001_01-01-2025.csv.part'
+                                        }
+                                    }
+                                ]
+                            ]" />
+
+                    </munit-tools:variables>
+
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Valid SFTP Upload Failure"
+                processor="sftp:write">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Upload Valid Temporary File']" />
+
+                </munit-tools:with-attributes>
+
+                <munit-tools:then-return>
+
+                    <munit-tools:error
+                        typeId="SFTP:CONNECTIVITY" />
+
+                </munit-tools:then-return>
+
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event
+                doc:name="Set SFTP Write Failure Event">
+
+                <munit:variables>
+
+                    <munit:variable
+                        key="runId"
+                        value="#['TEST-PUB-003']" />
+
+                    <munit:variable
+                        key="triggerType"
+                        value="#['SCHEDULER']" />
+
+                    <munit:variable
+                        key="validStagingDirectory"
+                        value="#['C:/mule_files/process/records/valid']" />
+
+                    <munit:variable
+                        key="rejectedStagingDirectory"
+                        value="#['C:/mule_files/process/records/rejected']" />
+
+                    <munit:variable
+                        key="targetDirectory"
+                        value="#['outbound']" />
+
+                    <munit:variable
+                        key="rejectedTargetDirectory"
+                        value="#['rejected']" />
+
+                    <munit:variable
+                        key="businessDate"
+                        value="#['01-01-2025']" />
+
+                </munit:variables>
+
+            </munit:set-event>
+
+            <flow-ref
+                doc:name="Invoke Publish Output Files Failure Test"
+                name="publish-output-files-subflowSub_Flow" />
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:verify-call
+                doc:name="Verify Valid SFTP Upload Attempted"
+                processor="sftp:write"
+                times="1">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Upload Valid Temporary File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call
+                doc:name="Verify Valid Local File Not Deleted After Upload Failure"
+                processor="file:delete"
+                times="0">
+
+                <munit-tools:with-attributes>
+
+                    <munit-tools:with-attribute
+                        attributeName="doc:name"
+                        whereValue="#['Delete Valid Local Staging File']" />
+
+                </munit-tools:with-attributes>
+
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+
+    <!-- ========================================================= -->
+    <!-- Test 4: Full publish cycle — valid + rejected files succeed-->
+    <!-- Covers: ee:transform, sftp:write, sftp:rename, file:delete  -->
+    <!-- and loggers inside both foreach bodies + completion logger  -->
+    <!-- ========================================================= -->
+
+    <munit:test
+        name="publish-output-files-subflow-full-publish-cycle-test"
+        description="One valid and one rejected staged file are successfully uploaded renamed and deleted">
+
+        <munit:behavior>
+
+            <!-- Valid staging has 1 file — foreach iterates and covers ee:transform, sftp:write, sftp:rename, file:delete -->
+            <munit-tools:mock-when
+                doc:name="Mock One Valid Staged File For Full Cycle"
+                processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Valid Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedValidFiles']"
+                            value="#[[{ attributes: { fileName: 'inventory_STORE001_01-01-2025.csv.part' } }]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Upload Valid Temporary File Success"
+                processor="sftp:write">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Upload Valid Temporary File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Rename Valid Temporary File Success"
+                processor="sftp:rename">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Rename Valid Temporary File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Delete Valid Local Staging File Success"
+                processor="file:delete">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Delete Valid Local Staging File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+
+            <!-- Rejected staging has 1 file — covers rejected foreach body -->
+            <munit-tools:mock-when
+                doc:name="Mock One Rejected Staged File For Full Cycle"
+                processor="file:list">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['List Rejected Staged Files']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return>
+                    <munit-tools:variables>
+                        <munit-tools:variable key="#['stagedRejectedFiles']"
+                            value="#[[{ attributes: { fileName: 'inventory_rejected_01-01-2025.csv.part' } }]]" />
+                    </munit-tools:variables>
+                </munit-tools:then-return>
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Upload Rejected Temporary File Success"
+                processor="sftp:write">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Upload Rejected Temporary File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Rename Rejected Temporary File Success"
+                processor="sftp:rename">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Rename Rejected Temporary File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+
+            <munit-tools:mock-when
+                doc:name="Mock Delete Rejected Local Staging File Success"
+                processor="file:delete">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Delete Rejected Local Staging File']" />
+                </munit-tools:with-attributes>
+                <munit-tools:then-return />
+            </munit-tools:mock-when>
+
+        </munit:behavior>
+
+        <munit:execution>
+
+            <munit:set-event doc:name="Set Full Publish Cycle Event">
+                <munit:variables>
+                    <munit:variable key="runId"                    value="#['TEST-PUB-004']" />
+                    <munit:variable key="triggerType"              value="#['SCHEDULER']" />
+                    <munit:variable key="validStagingDirectory"    value="#['C:/mule_files/process/records/valid']" />
+                    <munit:variable key="rejectedStagingDirectory" value="#['C:/mule_files/process/records/rejected']" />
+                    <munit:variable key="targetDirectory"          value="#['outbound']" />
+                    <munit:variable key="rejectedTargetDirectory"  value="#['rejected']" />
+                    <munit:variable key="businessDate"             value="#['01-01-2025']" />
+                </munit:variables>
+            </munit:set-event>
+
+            <flow-ref doc:name="Invoke Publish Output Files Full Cycle" name="publish-output-files-subflowSub_Flow" />
+
+        </munit:execution>
+
+        <munit:validation>
+
+            <munit-tools:verify-call doc:name="Verify Valid SFTP Write Called" processor="sftp:write" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Upload Valid Temporary File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call doc:name="Verify Valid SFTP Rename Called" processor="sftp:rename" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Rename Valid Temporary File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call doc:name="Verify Valid Local File Deleted" processor="file:delete" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Delete Valid Local Staging File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call doc:name="Verify Rejected SFTP Write Called" processor="sftp:write" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Upload Rejected Temporary File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call doc:name="Verify Rejected SFTP Rename Called" processor="sftp:rename" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Rename Rejected Temporary File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+            <munit-tools:verify-call doc:name="Verify Rejected Local File Deleted" processor="file:delete" times="1">
+                <munit-tools:with-attributes>
+                    <munit-tools:with-attribute attributeName="doc:name" whereValue="#['Delete Rejected Local Staging File']" />
+                </munit-tools:with-attributes>
+            </munit-tools:verify-call>
+
+        </munit:validation>
+
+    </munit:test>
+
+</mule>

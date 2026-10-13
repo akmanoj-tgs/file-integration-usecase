@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
+    xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+    xmlns:os="http://www.mulesoft.org/schema/mule/os"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://www.mulesoft.org/schema/mule/core
+        http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+        http://www.mulesoft.org/schema/mule/ee/core
+        http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+        http://www.mulesoft.org/schema/mule/os
+        http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd">
+	<sub-flow name="acquire-inventory-run-lock-subflow" doc:id="42495623-1e61-44f1-82c1-772d37a2a10c" >
+		<set-variable value="#[false]" doc:name="Initialize Lock Status" doc:id="f98a8668-8d06-425c-aca0-87145fab2e67" variableName="lockAcquired" />
+				<try doc:name="Acquire Active Run Lock" doc:id="4bdbbde2-d7d7-48af-8bf4-5c0d815c3d1f" >
+					<os:store doc:name="Create Active Run Lock" doc:id="222c382b-fcd3-4526-8e7e-ea669ed96636" key='#["${lock.activeKey}"]' failIfPresent="true">
+						<os:value><![CDATA[#[output application/java
+---
+{
+    runId: vars.runId,
+    triggerType: vars.triggerType,
+    sourceFilePath: vars.sourceFilePath,
+    businessDate: vars.businessDate,
+    status: "PROCESSING",
+    startedAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+            }
+}]]]></os:value>
+					</os:store>
+					<set-variable value="#[true]" doc:name="Mark Lock Acquired" doc:id="41a6b9b7-e91b-4118-b860-079dd937c333" variableName="lockAcquired"/>
+					<error-handler >
+						<on-error-continue enableNotifications="false" logException="false" doc:name="Handle Active Run Already Exists" doc:id="905a5ccc-ce09-4dde-8f94-977189199329" type="OS:KEY_ALREADY_EXISTS">
+							<os:retrieve doc:name="Retrieve Existing Active Run Lock" doc:id="14aa3887-ae97-4604-979b-f456eef25c42" key='#["${lock.activeKey}"]' target="existingActiveRunLock"/>
+							<ee:transform doc:name="Evaluate Existing Active Run Lock" doc:id="9c85ff89-5b94-4f58-9a0a-f11adb86ba3b" >
+								<ee:message >
+									<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+{
+}]]></ee:set-payload>
+								</ee:message>
+								<ee:variables >
+									<ee:set-variable variableName="existingLockStartedAt" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.existingActiveRunLock.startedAt default null)]]></ee:set-variable>
+									<ee:set-variable variableName="existingLockOwnerRunId" ><![CDATA[%dw 2.0
+output application/java
+---
+(vars.existingActiveRunLock.runId default "UNKNOWN_RUN") as String]]></ee:set-variable>
+									<ee:set-variable variableName="staleLockDetected" ><![CDATA[%dw 2.0
+output application/java
+
+var startedAt =
+    vars.existingActiveRunLock.startedAt default null
+
+var thresholdHours =
+    (vars.staleLockThresholdHours default 2) as Number
+
+var thresholdPeriod =
+    (
+        "PT"
+        ++ (thresholdHours as String)
+        ++ "H"
+    ) as Period
+
+---
+if (startedAt == null)
+    false
+else
+    now() > ((startedAt as DateTime) + thresholdPeriod)]]></ee:set-variable>
+								</ee:variables>
+							</ee:transform>
+							<choice doc:name="Check Existing Lock Age" doc:id="cdc29d97-89fa-4d76-ae6c-d1aa048ade17" >
+								<when expression="#[vars.staleLockDetected default false]">
+									<set-variable value='#["STALE_LOCK_DETECTED"]' doc:name="Set Stale Lock Detected Status" doc:id="8525c942-8489-4ddc-a4c0-ef1c56ab97a3" variableName="runStatus"/>
+									<logger level="WARN" doc:name="Log Stale Active Run Lock" doc:id="74c55fa4-f58e-46ef-9bc9-0aa1c290e54a" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_STALE_RUN_LOCK_DETECTED",&#10;    currentRunId: vars.runId,&#10;    staleOwnerRunId: vars.existingLockOwnerRunId,&#10;    staleLockStartedAt: vars.existingLockStartedAt,&#10;    thresholdHours: vars.staleLockThresholdHours default 2,&#10;    lockKey: Mule::p("lock.activeKey"),&#10;    runStatus: vars.runStatus&#10;}]'/>
+									<try doc:name="Remove Stale Lock Safely" doc:id="a48f272e-2ee3-4be4-b96f-b537dfcbcac7" >
+										<os:remove doc:name="Remove Stale Active Run Lock" doc:id="572d20ca-6c0d-4f6f-aad8-df6e950cd78c" key='#["${lock.activeKey}"]' />
+										<error-handler >
+											<on-error-continue enableNotifications="false" logException="false" doc:name="Ignore Missing Stale Lock" doc:id="7cee7980-b0e5-4254-80b2-4f1678e423df" type="OS:KEY_NOT_FOUND"/>
+										</error-handler>
+									</try>
+									<try doc:name="Acquire Lock After Stale Recovery" doc:id="f5938124-c692-4214-b843-a2cb172aa30e">
+										<os:store doc:name="Create Active Run Lock After Recovery" doc:id="d946bbb8-28dc-4547-b638-7f2a86d9b452" key='#["${lock.activeKey}"]' failIfPresent="true">
+											<os:value><![CDATA[#[output application/java
+---
+{
+    runId: vars.runId,
+    triggerType: vars.triggerType,
+    sourceFilePath: vars.sourceFilePath,
+    businessDate: vars.businessDate,
+    status: "PROCESSING",
+    startedAt:
+        (now() >> ("Asia/Kolkata" as TimeZone))
+            as String {
+                format: "yyyy-MM-dd'T'HH:mm:ss.SSSXXX"
+            }
+}]]]></os:value>
+										</os:store>
+										<set-variable value="#[true]" doc:name="Mark Lock Acquired After Recovery" doc:id="73007a41-440d-481b-8703-af6f75dab047" variableName="lockAcquired" />
+										<set-variable value='#["PROCESSING"]' doc:name="Restore Processing Status" doc:id="dffbdbc2-36dd-4a43-a7c0-f4b032f7027a" variableName="runStatus" />
+										<logger level="WARN" doc:name="Log Stale Lock Recovery Completed" doc:id="a05daca0-2c1c-45ab-ad5f-5812a120564f" message="#[output application/json&#10;---&#10;{&#10;    event: &quot;INVENTORY_STALE_RUN_LOCK_RECOVERED&quot;,&#10;    runId: vars.runId,&#10;    previousOwnerRunId: vars.existingLockOwnerRunId,&#10;    lockKey: Mule::p(&quot;lock.activeKey&quot;),&#10;    lockAcquired: vars.lockAcquired,&#10;    runStatus: vars.runStatus,&#10;    recoveredAt:&#10;        (now() &gt;&gt; (&quot;Asia/Kolkata&quot; as TimeZone))&#10;            as String {&#10;                format: &quot;yyyy-MM-dd'T'HH:mm:ss.SSSXXX&quot;&#10;            }&#10;}]" />
+										<error-handler>
+											<on-error-continue enableNotifications="false" logException="false" doc:name="Handle Recovery Lock Conflict" doc:id="84b73970-bc5d-4246-a3d1-aafe29465367" type="OS:KEY_ALREADY_EXISTS">
+												<set-variable value='#["ALREADY_RUNNING"]' doc:name="Set Already Running After Recovery Conflict" doc:id="6d4cb175-58e9-49da-93cf-dfaa9aa1f757" variableName="runStatus" />
+												<set-variable value="#[false]" doc:name="Clear Recovered Lock Status" doc:id="2123ea22-96f2-4eba-9df0-447aa09b6d95" variableName="lockAcquired" />
+												<logger level="WARN" doc:name="Log Recovered Lock Status" doc:id="0720fbc9-4383-4e47-a4bc-cba5d07f9835" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_STALE_LOCK_RECOVERY_CONFLICT",&#10;    runId: vars.runId,&#10;    previousOwnerRunId: vars.existingLockOwnerRunId,&#10;    lockKey: Mule::p("lock.activeKey"),&#10;    runStatus: vars.runStatus,&#10;    message:&#10;        "The stale lock was removed, but another execution acquired the active-run lock first."&#10;}]' />
+											</on-error-continue>
+										</error-handler>
+									</try>
+								</when>
+								<otherwise >
+									<set-variable value='#["ALREADY_RUNNING"]' doc:name="Set Already Running Status&#10;" doc:id="4908a590-21c9-49f6-b322-503cc9e2556a" variableName="runStatus"/>
+									<logger level="WARN" doc:name="Log Active Run Lock Conflict" doc:id="e9dd6ea7-2570-4088-b2fe-abdfddff2f99" message='#[output application/json&#10;---&#10;{&#10;    event: "INVENTORY_RUN_LOCK_NOT_ACQUIRED",&#10;    runId: vars.runId,&#10;    triggerType: vars.triggerType,&#10;    sourceFilePath: vars.sourceFilePath,&#10;    runStatus: vars.runStatus,&#10;    lockKey: "${lock.activeKey}",&#10;    existingLockOwnerRunId: vars.existingLockOwnerRunId,&#10;    existingLockStartedAt: vars.existingLockStartedAt,&#10;    staleLockDetected: false,&#10;    message:&#10;        "Another inventory execution is currently active."&#10;}]' />
+								</otherwise>
+							</choice>
+						</on-error-continue>
+					</error-handler>
+				</try>
+	</sub-flow>
+	
+
+		
+</mule>
