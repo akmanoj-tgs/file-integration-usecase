@@ -1,200 +1,365 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-	<modelVersion>4.0.0</modelVersion>
 
-	<groupId>com.mycompany</groupId>
-	<artifactId>file-integ-usecase</artifactId>
-	<version>1.0.0-SNAPSHOT</version>
-	<packaging>mule-application</packaging>
+<project
+    xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="
+        http://maven.apache.org/POM/4.0.0
+        https://maven.apache.org/xsd/maven-4.0.0.xsd">
 
-	<name>file-integ-usecase</name>
+    <modelVersion>4.0.0</modelVersion>
 
-	<properties>
-		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <groupId>9fbb9369-e3ee-4a98-9611-7cddfc8db28b</groupId>
+    <artifactId>inventory-file-integration-service</artifactId>
+    <version>${revision}</version>
+    <packaging>mule-application</packaging>
 
-		<app.runtime>4.12.3</app.runtime>
-		<mule.maven.plugin.version>4.10.1</mule.maven.plugin.version>
-		<munit.version>3.7.3</munit.version>
-	</properties>
+    <name>inventory-file-integration-service</name>
 
-	<build>
-		<plugins>
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-clean-plugin</artifactId>
-				<version>3.2.0</version>
-				<executions>
-					<!-- Bind cache-busting cleanup to the VALIDATE phase — the
-					     very first Maven lifecycle phase, which runs before
-					     validate → initialize → generate-sources.
-					     This ensures ACB-cached build artifacts (target/classes,
-					     reports HTML) are removed before mule-maven-plugin
-					     generate-sources scans the project and fails on them.
-					     excludeDefaultDirectories=true prevents wiping the real
-					     project target/ directory in this extra execution. -->
-					<execution>
-						<id>clean-acb-cached-artifacts</id>
-						<phase>validate</phase>
-						<goals>
-							<goal>clean</goal>
-						</goals>
-						<configuration>
-							<excludeDefaultDirectories>true</excludeDefaultDirectories>
-							<filesets>
-								<fileset>
-									<directory>${project.basedir}/.tooling-project/cached/${project.artifactId}/target</directory>
-									<followSymlinks>false</followSymlinks>
-								</fileset>
-								<fileset>
-									<directory>${project.basedir}/.tooling-project/cached/${project.artifactId}/reports</directory>
-									<followSymlinks>false</followSymlinks>
-								</fileset>
-							</filesets>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-			<!-- mule-maven-plugin: NO sharedLibraries in <configuration> —
-			     sharedLibraries is only valid in deployment contexts (CloudHub/RTF)
-			     and causes generate-sources BUILD FAILURE when placed here -->
-			<plugin>
-				<groupId>org.mule.tools.maven</groupId>
-				<artifactId>mule-maven-plugin</artifactId>
-				<version>${mule.maven.plugin.version}</version>
-				<extensions>true</extensions>
-			</plugin>
-			<plugin>
-				<groupId>com.mulesoft.munit.tools</groupId>
-				<artifactId>munit-maven-plugin</artifactId>
-				<version>${munit.version}</version>
-				<executions>
-					<execution>
-						<id>test</id>
-						<phase>test</phase>
-						<goals>
-							<goal>test</goal>
-							<goal>coverage-report</goal>
-						</goals>
-					</execution>
-				</executions>
-				<configuration>
-					<coverage>
-						<runCoverage>true</runCoverage>
-						<formats>
-							<format>html</format>
-						</formats>
-					</coverage>
-				</configuration>
-			</plugin>
-		</plugins>
-	</build>
+    <properties>
+        <revision>1.0.0-SNAPSHOT</revision>
 
-	<dependencies>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-http-connector</artifactId>
-			<version>1.12.1</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-sockets-connector</artifactId>
-			<version>1.2.9</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-ftp-connector</artifactId>
-			<version>2.0.4</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-sftp-connector</artifactId>
-			<version>2.7.3</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-file-connector</artifactId>
-			<version>1.5.6</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-objectstore-connector</artifactId>
-			<version>1.3.3</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>com.mulesoft.modules</groupId>
-			<artifactId>mule-secure-configuration-property-module</artifactId>
-			<version>1.3.2</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.connectors</groupId>
-			<artifactId>mule-email-connector</artifactId>
-			<version>1.8.0</version>
-			<classifier>mule-plugin</classifier>
-		</dependency>
-		<!-- commons-io: kept as application dependency to help resolve
-		     ByteArrayOutputStream classloader issue with mule-email-connector 1.8.0
-		     on Mule 4.12.3. NOT declared as sharedLibrary (causes generate-sources
-		     BUILD FAILURE in mule-maven-plugin:4.10.1). -->
-		<dependency>
-			<groupId>commons-io</groupId>
-			<artifactId>commons-io</artifactId>
-			<version>2.11.0</version>
-		</dependency>
-		<dependency>
-			<groupId>com.mulesoft.munit</groupId>
-			<artifactId>munit-runner</artifactId>
-			<version>3.7.3</version>
-			<classifier>mule-plugin</classifier>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>com.mulesoft.munit</groupId>
-			<artifactId>munit-tools</artifactId>
-			<version>3.7.3</version>
-			<classifier>mule-plugin</classifier>
-			<scope>test</scope>
-		</dependency>
-		<dependency>
-			<groupId>org.mule.weave</groupId>
-			<artifactId>assertions</artifactId>
-			<version>1.2.1</version>
-			<scope>test</scope>
-		</dependency>
-	</dependencies>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
-	<repositories>
-		<repository>
-			<id>anypoint-exchange-v3</id>
-			<name>Anypoint Exchange</name>
-			<url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
-			<layout>default</layout>
-		</repository>
-		<repository>
-			<id>mulesoft-releases</id>
-			<name>MuleSoft Releases Repository</name>
-			<url>https://repository.mulesoft.org/nexus/repository/releases/</url>
-			<layout>default</layout>
-		</repository>
-	</repositories>
+        <app.runtime>4.12.3</app.runtime>
+        <mule.maven.plugin.version>4.10.1</mule.maven.plugin.version>
+        <munit.version>3.7.3</munit.version>
 
-	<pluginRepositories>
-		<pluginRepository>
-			<id>mulesoft-releases</id>
-			<name>MuleSoft Releases Repository</name>
-			<layout>default</layout>
-			<url>https://repository.mulesoft.org/nexus/repository/releases/</url>
-			<snapshots>
-				<enabled>false</enabled>
-			</snapshots>
-		</pluginRepository>
-	</pluginRepositories>
+        <secret.key>test-secret-key</secret.key>
+    </properties>
+
+    <distributionManagement>
+
+        <repository>
+            <id>anypoint-exchange-v3</id>
+            <name>Anypoint Exchange</name>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/${project.groupId}/maven</url>
+            <layout>default</layout>
+        </repository>
+
+        <snapshotRepository>
+            <id>anypoint-exchange-v3</id>
+            <name>Anypoint Exchange Snapshots</name>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/organizations/${project.groupId}/maven</url>
+            <layout>default</layout>
+        </snapshotRepository>
+
+    </distributionManagement>
+
+    <build>
+
+        <finalName>${project.artifactId}-${project.version}</finalName>
+
+        <plugins>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+                <version>3.2.0</version>
+
+                <executions>
+
+                    <execution>
+                        <id>clean-acb-cached-artifacts</id>
+                        <phase>validate</phase>
+
+                        <goals>
+                            <goal>clean</goal>
+                        </goals>
+
+                        <configuration>
+                            <excludeDefaultDirectories>true</excludeDefaultDirectories>
+
+                            <filesets>
+
+                                <fileset>
+                                    <directory>
+                                        ${project.basedir}/.tooling-project/cached/${project.artifactId}/target
+                                    </directory>
+
+                                    <followSymlinks>false</followSymlinks>
+                                </fileset>
+
+                                <fileset>
+                                    <directory>
+                                        ${project.basedir}/.tooling-project/cached/${project.artifactId}/reports
+                                    </directory>
+
+                                    <followSymlinks>false</followSymlinks>
+                                </fileset>
+
+                            </filesets>
+
+                        </configuration>
+
+                    </execution>
+
+                </executions>
+
+            </plugin>
+
+            <plugin>
+                <groupId>org.mule.tools.maven</groupId>
+                <artifactId>mule-maven-plugin</artifactId>
+                <version>${mule.maven.plugin.version}</version>
+                <extensions>true</extensions>
+
+                <configuration>
+
+                    <classifier>mule-application</classifier>
+
+                    <cloudhub2Deployment>
+
+                        <uri>https://anypoint.mulesoft.com</uri>
+
+                        <provider>MC</provider>
+
+                        <businessGroupId>
+                            ${project.groupId}
+                        </businessGroupId>
+
+                        <environment>
+                            ${environment}
+                        </environment>
+
+                        <target>
+                            ${target}
+                        </target>
+
+                        <muleVersion>
+                            ${app.runtime}
+                        </muleVersion>
+
+                        <applicationName>
+                            ${app.name}
+                        </applicationName>
+
+                        <connectedAppClientId>
+                            ${connectedAppClientId}
+                        </connectedAppClientId>
+
+                        <connectedAppClientSecret>
+                            ${connectedAppClientSecret}
+                        </connectedAppClientSecret>
+
+                        <connectedAppGrantType>
+                            client_credentials
+                        </connectedAppGrantType>
+
+                        <replicas>1</replicas>
+
+                        <vCores>0.2</vCores>
+
+                        <properties>
+
+                            <deployment.platform>
+                                cloudhub2
+                            </deployment.platform>
+
+                            <local.validStaging>
+                                /tmp/inventory-file-integration/valid
+                            </local.validStaging>
+
+                            <local.rejectedStaging>
+                                /tmp/inventory-file-integration/rejected
+                            </local.rejectedStaging>
+
+                            <local.retainPublishedFiles>
+                                false
+                            </local.retainPublishedFiles>
+
+                        </properties>
+
+                        <secureProperties>
+
+                            <secret.key>
+                                ${secret.key}
+                            </secret.key>
+
+                        </secureProperties>
+
+                    </cloudhub2Deployment>
+
+                </configuration>
+
+            </plugin>
+
+            <plugin>
+                <groupId>com.mulesoft.munit.tools</groupId>
+                <artifactId>munit-maven-plugin</artifactId>
+                <version>${munit.version}</version>
+
+                <executions>
+
+                    <execution>
+                        <id>test</id>
+                        <phase>test</phase>
+
+                        <goals>
+                            <goal>test</goal>
+                            <goal>coverage-report</goal>
+                        </goals>
+
+                    </execution>
+
+                </executions>
+
+                <configuration>
+
+                    <systemPropertyVariables>
+
+                        <secret.key>
+                            ${secret.key}
+                        </secret.key>
+
+                    </systemPropertyVariables>
+
+                    <coverage>
+
+                        <runCoverage>true</runCoverage>
+
+                        <formats>
+                            <format>html</format>
+                        </formats>
+
+                    </coverage>
+
+                </configuration>
+
+            </plugin>
+
+        </plugins>
+
+    </build>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-http-connector</artifactId>
+            <version>1.12.1</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-sockets-connector</artifactId>
+            <version>1.2.9</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-ftp-connector</artifactId>
+            <version>2.0.4</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-sftp-connector</artifactId>
+            <version>2.7.3</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-file-connector</artifactId>
+            <version>1.5.6</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-objectstore-connector</artifactId>
+            <version>1.3.3</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mulesoft.modules</groupId>
+            <artifactId>
+                mule-secure-configuration-property-module
+            </artifactId>
+            <version>1.3.2</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.connectors</groupId>
+            <artifactId>mule-email-connector</artifactId>
+            <version>1.8.0</version>
+            <classifier>mule-plugin</classifier>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.11.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mulesoft.munit</groupId>
+            <artifactId>munit-runner</artifactId>
+            <version>${munit.version}</version>
+            <classifier>mule-plugin</classifier>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.mulesoft.munit</groupId>
+            <artifactId>munit-tools</artifactId>
+            <version>${munit.version}</version>
+            <classifier>mule-plugin</classifier>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mule.weave</groupId>
+            <artifactId>assertions</artifactId>
+            <version>1.2.1</version>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <repositories>
+
+        <repository>
+            <id>anypoint-exchange-v3</id>
+            <name>Anypoint Exchange</name>
+            <url>https://maven.anypoint.mulesoft.com/api/v3/maven</url>
+            <layout>default</layout>
+        </repository>
+
+        <repository>
+            <id>mulesoft-releases</id>
+            <name>MuleSoft Releases Repository</name>
+            <url>
+                https://repository.mulesoft.org/nexus/repository/releases/
+            </url>
+            <layout>default</layout>
+        </repository>
+
+    </repositories>
+
+    <pluginRepositories>
+
+        <pluginRepository>
+            <id>mulesoft-releases</id>
+            <name>MuleSoft Releases Repository</name>
+            <url>
+                https://repository.mulesoft.org/nexus/repository/releases/
+            </url>
+            <layout>default</layout>
+
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+
+        </pluginRepository>
+
+    </pluginRepositories>
 
 </project>

@@ -61,10 +61,7 @@ var fileName =
     ++ ".csv.part"
 
 var stagingDirectory =
-    (
-        vars.validStagingDirectory
-            default "C:/mule_files/process/records/valid"
-    ) as String
+    (vars.validStagingDirectory default "") as String
 
 ---
 stagingDirectory
@@ -102,5 +99,6 @@ write(
     }
 )]]]></file:content>
 		</file:write>
-	</sub-flow>
+	
+</sub-flow>
 </mule>

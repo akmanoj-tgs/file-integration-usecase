@@ -36,7 +36,11 @@ http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/em
             host="${sftp.host}"
             username="${sftp.username}"
             password="${secure::sftp.password}"
-            connectionTimeout="30"/>
+            connectionTimeout="30">
+			<reconnection >
+				<reconnect frequency="10000" />
+			</reconnection>
+		</sftp:connection>
 
     </sftp:config>
 
@@ -47,7 +51,11 @@ http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/em
 
         <http:listener-connection
             host="0.0.0.0"
-            port="8081" />
+            port="8081" >
+			<reconnection >
+				<reconnect frequency="5000" />
+			</reconnection>
+		</http:listener-connection>
 
     </http:listener-config>
 
@@ -67,12 +75,14 @@ http://www.mulesoft.org/schema/mule/email http://www.mulesoft.org/schema/mule/em
         port="587"
         user="${email.username}"
         password="${secure::email.password}"
-        timeoutUnit="SECONDS"
-        connectionTimeout="30"
+        connectionTimeout="60"
         readTimeout="60"
         writeTimeout="60">
 
-        <email:properties>
+        <reconnection >
+				<reconnect />
+			</reconnection>
+			<email:properties>
 
             <email:property
                 key="mail.smtp.starttls.enable"
