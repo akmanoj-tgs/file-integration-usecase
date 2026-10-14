@@ -1,12 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <mule
-xmlns="http://www.mulesoft.org/schema/mule/core"
+xmlns:file="http://www.mulesoft.org/schema/mule/file"
+	xmlns="http://www.mulesoft.org/schema/mule/core"
 xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
 xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
 xmlns:sftp="http://www.mulesoft.org/schema/mule/sftp"
 xmlns:os="http://www.mulesoft.org/schema/mule/os"
 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
 xsi:schemaLocation="
+http://www.mulesoft.org/schema/mule/file http://www.mulesoft.org/schema/mule/file/current/mule-file.xsd 
 http://www.mulesoft.org/schema/mule/sftp http://www.mulesoft.org/schema/mule/sftp/current/mule-sftp.xsd 
 http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
 http://www.mulesoft.org/schema/mule/core
@@ -195,7 +197,65 @@ false]]></ee:set-variable>
 								<sftp:read doc:name="Read Claimed Inventory CSV" config-ref="SFTP_Config" path="#[vars.processingSourceFilePath]" outputMimeType="application/csv; streaming=true; header=true">
             <non-repeatable-stream />
         </sftp:read>
-	</sub-flow>
+	
+</sub-flow>
+
+<sub-flow name="initialize-local-staging-directories-subflow">
+
+    <try doc:name="Create Valid Staging Directory">
+
+        <file:create-directory
+            config-ref="Local_File_Config"
+            directoryPath="#[vars.validStagingDirectory]"
+            doc:name="Create Valid Staging Directory" />
+
+        <error-handler>
+
+            <on-error-continue
+                type="FILE:FILE_ALREADY_EXISTS"
+                logException="false"
+                enableNotifications="false"
+                doc:name="Ignore Existing Valid Staging Directory" />
+
+        </error-handler>
+
+    </try>
+
+    <try doc:name="Create Rejected Staging Directory">
+
+        <file:create-directory
+            config-ref="Local_File_Config"
+            directoryPath="#[vars.rejectedStagingDirectory]"
+            doc:name="Create Rejected Staging Directory" />
+
+        <error-handler>
+
+            <on-error-continue
+                type="FILE:FILE_ALREADY_EXISTS"
+                logException="false"
+                enableNotifications="false"
+                doc:name="Ignore Existing Rejected Staging Directory" />
+
+        </error-handler>
+
+    </try>
+
+    <logger
+        level="INFO"
+        doc:name="Log Local Staging Directories Initialized"
+        message='#[output application/json
+---
+{
+    event: "LOCAL_STAGING_DIRECTORIES_INITIALIZED",
+    runId:
+        vars.runId default "UNKNOWN_RUN",
+    validStagingDirectory:
+        vars.validStagingDirectory,
+    rejectedStagingDirectory:
+        vars.rejectedStagingDirectory
+}]' />
+
+</sub-flow>
 	<sub-flow name="finalize-successful-inventory-run-subflow" doc:id="e4b588cd-820c-412a-9095-0612d1bdf057" >
 		<try doc:name="Publish and Finalize Inventory Run" doc:id="f30e5c4c-c915-44f4-a2f6-d1267e2e2d5d">
 											<flow-ref doc:name="Publish Output Files" name="publish-output-files-subflowSub_Flow" />
@@ -252,7 +312,7 @@ false]]></ee:set-variable>
 			<set-variable value='#["SUCCESS"]' doc:name="Set Success Notification Type" doc:id="3e1ad23f-9104-4364-8ff1-1a88e76a009f" variableName="notificationType"/>
 			<set-variable value='#["[Inventory Integration] COMPLETED - "&#10;        ++ (vars.expectedSourceFileName default "UNKNOWN_FILE")]' doc:name="Set Success Notification Subject" doc:id="09b720dd-5a5a-4478-80a1-dfdb8bb95cf3" variableName="notificationSubject"/>
 			<set-variable value="#[Mule::p('email.recipients')]" doc:name="Set Success Notification Recipient" doc:id="aa316ca8-3591-4bc0-a323-ae7d7fc7288d" variableName="notificationRecipient"/>
-			<flow-ref doc:name="Send Completion Notificationz" doc:id="8b2b5908-9f5b-42c1-b8a1-b9b396cc46eb" name="send-inventory-notification-flow"/>
+			<flow-ref doc:name="Send Completion Notifications" doc:id="8b2b5908-9f5b-42c1-b8a1-b9b396cc46eb" name="send-inventory-notification-flow"/>
 			<error-handler>
 												<on-error-propagate enableNotifications="true" logException="true" doc:name="Handle Publication Failure" doc:id="b51f6898-a9c3-4871-bd9d-404e0c40a2d1" type="ANY">
 												<set-variable

@@ -79,6 +79,60 @@ output application/java
 Mule::p("lock.staleThresholdHours") as Number]]></ee:set-variable>
 			</ee:variables>
 		</ee:transform>
+		
+		<choice doc:name="Validate Staging Paths">
+
+    <when expression="#[
+        isEmpty(
+            trim(
+                (vars.validStagingDirectory default '') as String
+            )
+        )
+        or
+        isEmpty(
+            trim(
+                (vars.rejectedStagingDirectory default '') as String
+            )
+        )
+    ]">
+
+        <raise-error
+            type="APP:INVALID_STAGING_CONFIGURATION"
+            description="Valid and rejected staging directories must be configured"
+            doc:name="Reject Missing Staging Paths" />
+
+    </when>
+
+    <when expression="#[
+        lower(
+            (Mule::p('deployment.platform') default 'local')
+                as String
+        ) == 'cloudhub2'
+        and
+        (
+            (
+                (vars.validStagingDirectory default '')
+                    as String
+            ) matches /^[A-Za-z]:[\/\\].*/
+            or
+            (
+                (vars.rejectedStagingDirectory default '')
+                    as String
+            ) matches /^[A-Za-z]:[\/\\].*/
+        )
+    ]">
+
+        <raise-error
+            type="APP:INVALID_STAGING_CONFIGURATION"
+            description="Windows drive paths cannot be used in CloudHub 2.0"
+            doc:name="Reject Windows CloudHub Paths" />
+
+    </when>
+
+</choice>
+		<flow-ref
+		    name="initialize-local-staging-directories-subflow"
+		    doc:name="Initialize Local Staging Directories" />
 		<logger
             doc:name="Log Processing Start"
             level="INFO"
@@ -101,7 +155,7 @@ Mule::p("lock.staleThresholdHours") as Number]]></ee:set-variable>
 						<choice doc:name="Continue Eligible File Processing" doc:id="8dcc8eab-2459-4664-b990-1efa89a1d68e">
 							<when expression="#[not (vars.duplicateFile default false)]">
 								<flow-ref doc:name="Claim and Read Source File" doc:id="ba5d756c-c9cd-46ca-a0a3-366ad502f2ee" name="claim-source-file-subflow"/>
-								<batch:job jobName="inventory-processing-batch_Job" blockSize="2000" maxConcurrency="1" maxFailedRecords="-1">
+								<batch:job jobName="inventory-processing-batch_Job" blockSize="3000" maxConcurrency="1" maxFailedRecords="-1">
 
             <batch:process-records>
 
@@ -293,10 +347,7 @@ var fileName =
     ++ ".csv.part"
 
 var stagingDirectory =
-    (
-        vars.rejectedStagingDirectory
-            default "C:/mule_files/process/records/rejected"
-    ) as String
+    (vars.rejectedStagingDirectory default "") as String
 
 ---
 stagingDirectory
