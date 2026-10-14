@@ -82,45 +82,16 @@ Mule::p("lock.staleThresholdHours") as Number]]></ee:set-variable>
 		
 		<choice doc:name="Validate Staging Paths">
 
-    <when expression="#[
-        isEmpty(
-            trim(
-                (vars.validStagingDirectory default '') as String
-            )
-        )
-        or
-        isEmpty(
-            trim(
-                (vars.rejectedStagingDirectory default '') as String
-            )
-        )
-    ]">
-
-        <raise-error
-            type="APP:INVALID_STAGING_CONFIGURATION"
-            description="Valid and rejected staging directories must be configured"
-            doc:name="Reject Missing Staging Paths" />
-
-    </when>
-
-    <when expression="#[
-        lower(
-            (Mule::p('deployment.platform') default 'local')
-                as String
-        ) == 'cloudhub2'
-        and
-        (
-            (
-                (vars.validStagingDirectory default '')
-                    as String
-            ) matches /^[A-Za-z]:[\/\\].*/
-            or
-            (
-                (vars.rejectedStagingDirectory default '')
-                    as String
-            ) matches /^[A-Za-z]:[\/\\].*/
-        )
-    ]">
+		    <when expression="#[isEmpty(&#10;		            trim(&#10;		                (&#10;		                    vars.validStagingDirectory&#10;		                        default ''&#10;		                ) as String&#10;		            )&#10;		        )&#10;		        or&#10;		        isEmpty(&#10;		            trim(&#10;		                (&#10;		                    vars.rejectedStagingDirectory&#10;		                        default ''&#10;		                ) as String&#10;		            )&#10;		        )]">
+		
+		        <raise-error
+		            type="APP:INVALID_STAGING_CONFIGURATION"
+		            description="Valid and rejected staging directories must be configured"
+		            doc:name="Reject Missing Staging Paths" />
+		
+		    </when>
+		
+		    <when expression="#[lower(&#10;		            (&#10;		                Mule::p('deployment.platform')&#10;		                    default 'local'&#10;		            ) as String&#10;		        ) == 'cloudhub2'&#10;		        and&#10;		        (&#10;		            (&#10;		                (&#10;		                    vars.validStagingDirectory&#10;		                        default ''&#10;		                ) as String&#10;		            ) matches /^[A-Za-z]:.*/&#10;		            or&#10;		            (&#10;		                (&#10;		                    vars.rejectedStagingDirectory&#10;		                        default ''&#10;		                ) as String&#10;		            ) matches /^[A-Za-z]:.*/&#10;		        )]">
 
         <raise-error
             type="APP:INVALID_STAGING_CONFIGURATION"
